@@ -1,4 +1,8 @@
+#ifdef CFG_LOCAL
+#include "cfg_local.h"
+#else
 #include "cfg.h"
+#endif
 #include <string.h>
 #include "sdkconfig.h"
 #include "esp_wifi.h"
