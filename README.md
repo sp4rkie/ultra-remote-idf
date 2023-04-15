@@ -1,5 +1,7 @@
-ultra-remote-idf (ESP-IDF variant)
-==================================
+ultra-remote (ESP-IDF variant)
+==============================
+
+preferring arduino-esp32? have a look at this: [fast ESP32 WiFi remote control (arduino-esp32 variant)](https://github.com/sp4rkie/ultra-remote-ino)
 
 what is it
 ----------
