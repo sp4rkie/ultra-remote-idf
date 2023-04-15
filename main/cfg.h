@@ -1,7 +1,7 @@
 #define NTP_SERVER  "pool.ntp.org"
-#define TARGET_HOST "my.target.host"    # e.g. example.com
-#define TARGET_PORT my_target_port      # e.g. 2345
-#define BUTTON wakeup_push_button       # e.g. 4
+#define TARGET_HOST "example.com"   // choose your target machine
+#define TARGET_PORT "2345"           // choose your target port
+#define BUTTON 4                    // choose button to trigger wakeup
 
 #define WIFI0_SSID      ""
 #define WIFI0_PASSWORD  ""
