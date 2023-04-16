@@ -10,7 +10,7 @@ what is it
 
 - a fast ESP32 WiFi remote control with buttons
 - various sizes are supported (currently 1 - 16 buttons)
-- the profile picture shows an engineering sample of the device (documentation will follow on [Hackaday.io](https://hackaday.io/))
+- the [profile picture](https://avatars.githubusercontent.com/u/3232165?v=4) shows an engineering sample of the device (documentation will follow on [Hackaday.io](https://hackaday.io/))
 
 project main objective
 ----------------------
@@ -36,7 +36,7 @@ features
 --------
 
 - very fast (see project status)
-- very small (see profile picture)
+- very small (see [profile picture](https://avatars.githubusercontent.com/u/3232165?v=4))
 - easy to build (documentation will follow)
 - battery operated (CR123 A 3V)
 - OTAable (press key before inserting the battery)
