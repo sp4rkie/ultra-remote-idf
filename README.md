@@ -78,19 +78,14 @@ debug protocol output as of current git
         load:0x40078000,len:14716
         ho 0 tail 12 room 4
         load:0x40080400,len:4
+        0x40080400: _init at ??:?
+
         load:0x40080404,len:3372
         entry 0x400805a4
-        Enabling EXT1 wakeup on pins GPIO2
-        E (43) TP: a
-        E (83) TP: b
-        E (83) TP: c
-        E (83) TP: d
-        E (83) TP: 1
-        E (123) TP: Waiting for IP(s)
-        E (163) TP: 2
-        E (183) TP: 3
-        E (193) TP: 4
-        E (203) TP: XXXXXXXXXXXXXXXXXXX      # <-- 203ms overall elapsed time keypress (wakeup) to status (received from remote machine)
-        E (203) wifi:NAN WiFi stop
+        TP01: 42
+        TP02: 162 WiFi connected
+        TP03: 182 @beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^   # <-- CMD issued
+        TP04: 202 #[XX]#[0]#[0]#[xxx]#[0]#[0]                   # <-- STATUS reveived - 202ms overall elapsed time between keypress (wakeup) to status (received from remote machine)
+        E (212) wifi:NAN WiFi stop
         Entering deep sleep
 
