@@ -20,7 +20,7 @@ project main objective
 project status as of current git (see protocol output)
 ------------------------------------------------------
 
-- *220ms* time span between keypress (wakeup) to status (received from remote machine)
+- *220ms* average time span between keypress (wakeup) to status (received from remote machine)
 - any pull requests to improve the current results are very welcome
 
 basic functionality
