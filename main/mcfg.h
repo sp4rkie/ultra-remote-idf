@@ -1,7 +1,12 @@
 #define NTP_SERVER  "pool.ntp.org"
 #define TARGET_HOST "example.com"   // choose your target machine
-#define TARGET_PORT "2345"           // choose your target port
+#ifdef ESP_ARDUINO_VERSION          
+#define TARGET_PORT  2345           // choose your target port
 #define BUTTON 4                    // choose button to trigger wakeup
+#else
+#define TARGET_PORT "2345"          // choose your target port
+#define BUTTON 2                    // choose button to trigger wakeup
+#endif
 
 #define WIFI0_SSID      ""
 #define WIFI0_PASSWORD  ""
