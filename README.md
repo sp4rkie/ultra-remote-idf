@@ -1,7 +1,7 @@
 ultra-remote (ESP-IDF variant)
 ==============================
 
-work in progress...
+work in progress... stay tuned
 
 preferring arduino-esp32? have a look at this: [fast ESP32 WiFi remote control (arduino-esp32 variant)](https://github.com/sp4rkie/ultra-remote-ino)
 
@@ -10,11 +10,18 @@ what is it
 
 - a fast ESP32 WiFi remote control with buttons
 - various sizes are supported (currently 1 - 16 buttons)
+- the profile picture shows an engineering sample of the device (documentation will follow on [Hackaday.io](https://hackaday.io/))
 
-main purpose
-------------
+project main objective
+----------------------
 
-- remote control of any machine suitable to receive ascii commands (including smartphones)
+- implement the fastest way possible to remote control a linux machine (including smartphones with [Termux](https://termux.dev/en/) and [Tasker](https://tasker.joaoapps.com/)) with an [ESP32](https://en.wikipedia.org/wiki/ESP32) device over WiFi 
+
+project status as of current git (see protocol output)
+------------------------------------------------------
+
+- *220ms* time span between keypress (wakeup) to status (received from remote machine)
+- any pull requests to improve the current results are very welcome
 
 basic functionality
 -------------------
@@ -22,15 +29,24 @@ basic functionality
 - wake up after key press
 - connect to WiFi
 - send an ascii command to a remote machine
-- receive status of the remote machine
+- receive status from the remote machine
 - go to deep sleep again
 
 features
 --------
 
-- very fast
-- time between key press (aka. wakeup) and status receive averages 220ms
+- very fast (see project status)
+- very small (see profile picture)
+- easy to build (documentation will follow)
 - battery operated (CR123 A 3V)
+- OTAable (press key before inserting the battery)
+
+runtime environment
+-------------------
+
+- access point hardware in use: Raspberry Pi 4 Model B Rev 1.4
+- access point software in use: debian version 11.6/ hostapd version 2:2.9.0-21
+- remote target software to control: ucspi-tcp version 1:0.88-6
 
 build environment
 -----------------
@@ -48,9 +64,8 @@ how to build
         cd ultra-remote-idf
         idf.py flash monitor
 
-example debug output
---------------------
-
+debug protocol output as of current git
+---------------------------------------
 
         Entering deep sleep
         ets Jun  8 2016 00:22:57
@@ -75,7 +90,7 @@ example debug output
         E (163) TP: 2
         E (183) TP: 3
         E (193) TP: 4
-        E (203) TP: XXXXXXXXXXXXXXXXXXX                     # <-- 203ms elapsed since keypress (wakeup)
+        E (203) TP: XXXXXXXXXXXXXXXXXXX      # <-- 203ms overall elapsed time keypress (wakeup) to status (received from remote machine)
         E (203) wifi:NAN WiFi stop
         Entering deep sleep
 
