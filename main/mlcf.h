@@ -52,7 +52,7 @@ typedef _i64          *_i64p;
 //#define PR05_(fmt, a...) trc_m(fct4_debugid, "[ %02d ] " fmt, smp_processor_id(), ##a) // sel1: activate debug to buffer
 #define PR04_(fmt, a...) fprintf(stderr, fmt, ##a)
 #define PR04(a...) PR04_(a);
-#if defined(ESP8266) || defined(ESP32) || defined(CONFIG_IDF_TARGET_ESP32_)
+#if defined(ESP8266) || defined(ESP32)
 #define PR05_(fmt, a...) Serial.printf(fmt, ##a)
 #else
 #define PR05_(fmt, a...) printf(fmt, ##a)
