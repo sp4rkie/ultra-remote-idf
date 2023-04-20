@@ -1,3 +1,11 @@
+/*
+ * code heavily based on 
+ *   * esp-idf/examples/system/startup_time at master · espressif/esp-idf
+ *   https://github.com/espressif/esp-idf/tree/master/examples/system/startup_time
+ * and
+ *   * esp-idf/examples/protocols/http_request at master · espressif/esp-idf
+ *   https://github.com/espressif/esp-idf/tree/master/examples/protocols/http_request
+ */
 #include <string.h>
 #include "sdkconfig.h"
 #include "esp_wifi.h"
@@ -13,8 +21,8 @@
 #include "mcfg.h"
 #endif
 
-#undef TP05
-#define TP05
+//#undef TP05
+//#define TP05
 #define DEBUG 1
 #define WIFI_CONN_MAX_RETRY 6
 #define WIFI_SCAN_RSSI_THRESHOLD -127
