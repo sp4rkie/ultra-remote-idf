@@ -17,6 +17,7 @@
 #include "mlcf.h"
 #ifdef MCFG_LOCAL
 #include "mcfg_local.h"
+#include "mcfg_locals.h"
 #else
 #include "mcfg.h"
 #endif
