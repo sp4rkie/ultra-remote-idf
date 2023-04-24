@@ -184,7 +184,7 @@ scan_matrix()
 {
 //TP05
     if (gpio_get_level(KEY_FAKE_1)) {  // high if pressed
-        return KEY_14;  // simulate beep
+//        return KEY_14;  // simulate beep
         return KEY_01;  // simulate pause
     } else {
         return KEY_NONE;
@@ -299,8 +299,8 @@ PR05("-------DOOR-------\n");
     }
     if (key != KEY_NONE) {
 PR05("-------SMARTPH-------\n");
-//      ESP_ERROR_CHECK(ur_connect(SMART_SSID));
-        ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
+        ESP_ERROR_CHECK(ur_connect(SMART_SSID));
+//      ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
 if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
         exec_cmd(key);
         ESP_ERROR_CHECK(ur_disconnect());
