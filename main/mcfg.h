@@ -1,11 +1,17 @@
-#define NTP_SERVER  "pool.ntp.org"
-#define TARGET_HOST "example.com"   // choose your target machine
+#define NTP_SERVER          "pool.ntp.org"
+#define TARGET_HOST         "example1.com"  // choose your primary target machine
+#define SMART_TARGET_HOST   "example2.com"  // choose your secondary target machine
+#define OTA_MACHINE         "example3.com"  // machine to fetch OTAs from via http
+#define OTA_IMAGE           "ultra-remote-idf.bin"
+
 #ifdef ESP_ARDUINO_VERSION          
-#define TARGET_PORT  2345           // choose your target port
-#define BUTTON 4                    // choose button to trigger wakeup
+#define TARGET_PORT         2345            // choose your primary target port
+#define SMART_TARGET_PORT   2346            // choose your secondary target port
+#define BUTTON              4               // choose button to trigger wakeup
 #else
-#define TARGET_PORT "2345"          // choose your target port
-#define BUTTON 2                    // choose button to trigger wakeup
+#define TARGET_PORT         "2345"          // choose your primary target port
+#define SMART_TARGET_PORT   "2346"          // choose your secondary target port
+#define BUTTON              2               // choose button to trigger wakeup
 #endif
 
 #define WIFI0_SSID      ""
