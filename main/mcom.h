@@ -426,6 +426,7 @@ void beep(_u32 frequ, _u32 cnt) {}
 static _i32 s_retry_num = 0;
 static esp_netif_t *s_ur_sta_netif = 0;
 static SemaphoreHandle_t s_semph_get_ip_addrs = 0;
+static _i8 gw_ip[16];
 
 _i8p accpts[] = {
     WIFI0_SSID, WIFI0_PASSWORD,
@@ -447,7 +448,8 @@ _i8p accpts[] = {
 void
 dump_cfg(const _i8 *str, wifi_init_config_t *cfg)
 {
-    PR05("%s", str);
+TP05
+//    PR05("%s\n", str);
     GV05(cfg->static_rx_buf_num);
     GV05(cfg->dynamic_rx_buf_num);
     GV05(cfg->tx_buf_type);
@@ -468,6 +470,17 @@ dump_cfg(const _i8 *str, wifi_init_config_t *cfg)
     GV05(cfg->sta_disconnected_pm);
     GV05(cfg->espnow_max_encrypt_num);
     GV05(cfg->magic);
+    PR05_("\n");
+}
+
+void
+dump_ev(const _i8 *str, ip_event_got_ip_t *ev)
+{
+TP05
+//    PR05("%s\n", str);
+    PR05("ip:   " IPSTR "\n", IP2STR(&ev->ip_info.ip));
+    PR05("mask: " IPSTR "\n", IP2STR(&ev->ip_info.netmask));
+    PR05("gw:   " IPSTR "\n", IP2STR(&ev->ip_info.gw));
     PR05_("\n");
 }
 
@@ -506,9 +519,11 @@ ur_handler_on_sta_got_ip(void *arg, esp_event_base_t event_base,
 TP05
     s_retry_num = 0;
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+//dump_ev("pre", event);
     if (!ur_is_our_netif(NETIF_DESC_STA, event->esp_netif)) {
         return;
     }
+    sprintf(gw_ip, IPSTR, IP2STR(&event->ip_info.gw));
     if (s_semph_get_ip_addrs) {
         xSemaphoreGive(s_semph_get_ip_addrs);
     } else {
@@ -788,6 +803,7 @@ _i32
 mysend(_i8p cmd, _i8p host, _i8p port, _i8p *statmsg)
 {
 TP05
+    if (!host) host = gw_ip;
 if (DEBUG > 5) PR05("cmd: %lu %s -> %s@%s\n", esp_log_timestamp(), cmd, host, port);
     const struct addrinfo hints = {
         .ai_family = AF_INET,
