@@ -1,19 +1,37 @@
 /*
  * code heavily based on 
+ *
  *   * esp-idf/examples/system/startup_time at master · espressif/esp-idf
  *   https://github.com/espressif/esp-idf/tree/master/examples/system/startup_time
  * and
  *   * esp-idf/examples/protocols/http_request at master · espressif/esp-idf
  *   https://github.com/espressif/esp-idf/tree/master/examples/protocols/http_request
+ * and
+ *   * esp-idf/examples/system/ota/simple_ota_example at master · espressif/esp-idf
+ *   https://github.com/espressif/esp-idf/tree/master/examples/system/ota/simple_ota_example
+ *
+ * thanks to the Espressif people for providing this
  */
-#include <string.h>
 #include "sdkconfig.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_sleep.h"
+#include "esp_https_ota.h"
+#include "esp_http_client.h"
 #include "nvs_flash.h"
 #include "lwip/netdb.h"
 #include "driver/rtc_io.h"
+
+#if defined(ESP32_2)
+#   define DEBUG    10
+#elif defined(ESP32_12)
+#   define DEBUG     1
+//#   define BUZZER    2
+#else
+this may not happen
+#endif
+
 #include "mlcf.h"
 #ifdef MCFG_LOCAL
 #include "mcfg_local.h"
@@ -21,289 +39,276 @@
 #else
 #include "mcfg.h"
 #endif
+#include "mcom.h"
 
-//#undef TP05
-//#define TP05
-#define DEBUG 1
-#define WIFI_CONN_MAX_RETRY 6
-#define WIFI_SCAN_RSSI_THRESHOLD -127
-#define WIFI_SCAN_METHOD WIFI_FAST_SCAN
-#define WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
-#define WIFI_CONNECT_AP_SORT_METHOD WIFI_CONNECT_AP_BY_SIGNAL
+/* ---vvv--- KEY section ---vvv--- */
+// sense keys pulled down by 100k 
+// must be connected to RTC capable terminals to allow ESP_EXT1_WAKEUP_ANY_HIGH
+#define KEY_SNS_0 27
+#define KEY_SNS_1 26
+#define KEY_SNS_2  4
+#define KEY_SNS_3 14
 
-#define NETIF_DESC_STA "ultra_remote"
+#if defined(ESP32_2)
+// fake sense key pulled down by 470k
+#define KEY_FAKE_1 2
+#define KEY_SNS_MASK (1 << KEY_FAKE_1)
+#else
+#define KEY_SNS_MASK (1 << KEY_SNS_0 | \
+                      1 << KEY_SNS_1 | \
+                      1 << KEY_SNS_2 | \
+                      1 << KEY_SNS_3)
+#endif
 
-static const char *CMD = "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^\n";
-static esp_netif_t *s_ur_sta_netif = NULL;
-static SemaphoreHandle_t s_semph_get_ip_addrs = NULL;
-static int s_retry_num = 0;
+// feeder keys pulled up by 51k 
+// sense keys connect to feeders on cross points
+// when the corresponding key is depressed
+// causing a 'high' level being detected to wakeup.
+// after this the matrix is scanned.
+// can optionally use RTC capable terminals (but with no benefit)
+#define KEY_HOT_0  17  
+#define KEY_HOT_1  16
+#define KEY_HOT_2   5
+#define KEY_HOT_3  25 
 
-static const char *TAG = "TP";
+#define KEY_NONE 0xff
+
+/*
+scanned key codes to key caps ordering (hex):
+
+ 0  1      KEY_01 KEY_02     pause media
+10 11      KEY_03 KEY_04     vol-  vol+
+20 21      KEY_05 KEY_06     backw forw
+30 31  =>  KEY_07 KEY_08     unfav fav
+ 2  3      KEY_09 KEY_10     undel del          
+12 13      KEY_11 KEY_12     mute nvol      
+22 23      KEY_13 KEY_14     rpt  opul
+*/
+
+#define KEY_01 0x00
+#define KEY_02 0x01
+#define KEY_03 0x10
+#define KEY_04 0x11
+#define KEY_05 0x20
+#define KEY_06 0x21
+#define KEY_07 0x30
+#define KEY_08 0x31
+#define KEY_09 0x02
+#define KEY_10 0x03
+#define KEY_11 0x12
+#define KEY_12 0x13
+#define KEY_13 0x22
+#define KEY_14 0x23
+
+_u8 key_sns[] = {   // cols
+    KEY_SNS_0,
+    KEY_SNS_1,
+    KEY_SNS_2,
+    KEY_SNS_3,
+};
+
+_u8 key_hot[] = {   // rows
+    KEY_HOT_0,
+    KEY_HOT_1,
+    KEY_HOT_2,
+    KEY_HOT_3,
+};
 
 void
-dump_cfg(const _i8 *str, wifi_init_config_t *cfg)
-{
-    PR05("%s", str);
-    GV05(cfg->static_rx_buf_num);
-    GV05(cfg->dynamic_rx_buf_num);
-    GV05(cfg->tx_buf_type);
-    GV05(cfg->static_tx_buf_num);
-    GV05(cfg->dynamic_tx_buf_num);
-    GV05(cfg->cache_tx_buf_num);
-    GV05(cfg->csi_enable);
-    GV05(cfg->ampdu_rx_enable);
-    GV05(cfg->ampdu_tx_enable);
-    GV05(cfg->amsdu_tx_enable);
-    GV05(cfg->nvs_enable);
-    GV05(cfg->nano_enable);
-    GV05(cfg->rx_ba_win);
-    GV05(cfg->wifi_task_core_id);
-    GV05(cfg->beacon_max_len);
-    GV05(cfg->mgmt_sbuf_num);
-    GW05(cfg->feature_caps);
-    GV05(cfg->sta_disconnected_pm);
-    GV05(cfg->espnow_max_encrypt_num);
-    GV05(cfg->magic);
-    PR05_("\n");
-}
-
-bool ur_is_our_netif(const char *prefix, esp_netif_t *netif)
+exec_cmd(_u8 key)
 {
 TP05
-    return strncmp(prefix, esp_netif_get_desc(netif), strlen(prefix) - 1) == 0;
-}
+    _i8p cmd = 0;
 
-static void ur_handler_on_wifi_disconnect(void *arg, esp_event_base_t event_base,
-                               int32_t event_id, void *event_data)
-{
-TP05
-PR05("WiFi disconnected\n");
-    s_retry_num++;
-    if (s_retry_num > WIFI_CONN_MAX_RETRY) {
-        ESP_LOGI(TAG, "WiFi Connect failed %d times, stop reconnect.", s_retry_num);
-        if (s_semph_get_ip_addrs) {
-            xSemaphoreGive(s_semph_get_ip_addrs);
-        }
-        return;
-    }
-    ESP_LOGE(TAG, "Wi-Fi disconnected, trying to reconnect...");
-    esp_err_t err = esp_wifi_connect();
-    if (err == ESP_ERR_WIFI_NOT_STARTED) {
-        return;
-    }
-    ESP_ERROR_CHECK(err);
-}
-
-static void ur_handler_on_sta_got_ip(void *arg, esp_event_base_t event_base,
-                      int32_t event_id, void *event_data)
-{
-TP05
-PR05("got IP\n");
-    s_retry_num = 0;
-    ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-    if (!ur_is_our_netif(NETIF_DESC_STA, event->esp_netif)) {
-        return;
-    }
-    ESP_LOGI(TAG, "Got IPv4 event: Interface \"%s\" address: " IPSTR, esp_netif_get_desc(event->esp_netif), IP2STR(&event->ip_info.ip));
-    if (s_semph_get_ip_addrs) {
-        xSemaphoreGive(s_semph_get_ip_addrs);
+    if (key == KEY_01) {
+        cmd = "zp";
+    } else if (key == KEY_02) {
+        cmd = "zm";
+    } else if (key == KEY_03) {
+        cmd = "zh";
+    } else if (key == KEY_04) {
+        cmd = "zk";
+    } else if (key == KEY_05) {
+        cmd = "zb";
+    } else if (key == KEY_06) {
+        cmd = "zn";
+    } else if (key == KEY_07) {
+        cmd = "zc";
+    } else if (key == KEY_08) {
+        cmd = "zx";
+    } else if (key == KEY_09) {
+        cmd = "zt";
+    } else if (key == KEY_10) {
+        cmd = "zr";
+    } else if (key == KEY_11) {
+        cmd = "zl";
+    } else if (key == KEY_12) {
+        cmd = "zj";
+    } else if (key == KEY_13) {
+        cmd = "zv";
+    } else if (key == KEY_14) {
+#if defined(ESP32_2)
+        cmd = "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^";
+#else
+        cmd = "bz";     // available explicitly
+#endif
     } else {
-        ESP_LOGE(TAG, "- IPv4 address: " IPSTR ",", IP2STR(&event->ip_info.ip));
+        PR05("illeg key: %02x\n", key);
+    }
+    if (cmd) {
+        mysend(cmd, SMART_TARGET_HOST, SMART_TARGET_PORT, 0);
     }
 }
 
-static void ur_handler_on_wifi_connect(void *esp_netif, esp_event_base_t event_base,
-                            int32_t event_id, void *event_data)
+gpio_config_t io_conf = {
+    0,
+    GPIO_MODE_INPUT,
+    GPIO_PULLUP_DISABLE,
+    GPIO_PULLDOWN_DISABLE,
+    GPIO_INTR_DISABLE,
+};
+
+#if defined(ESP32_2)
+
+void
+init_matrix()
 {
-TP05
-PR05("wifi connected\n");
+//TP05
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = 1ULL << KEY_FAKE_1;
+    gpio_config(&io_conf);
 }
 
-void ur_wifi_start(void)
+_u8
+scan_matrix()
 {
-TP05
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-//dump_cfg("pre", &cfg);
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    esp_netif_inherent_config_t esp_netif_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_STA();
-    esp_netif_config.if_desc = NETIF_DESC_STA;
-    esp_netif_config.route_prio = 128;
-    s_ur_sta_netif = esp_netif_create_wifi(WIFI_IF_STA, &esp_netif_config);
-    esp_wifi_set_default_wifi_sta_handlers();
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_start());
+//TP05
+    if (gpio_get_level(KEY_FAKE_1)) {  // high if pressed
+        return KEY_14;  // simulate beep
+        return KEY_01;  // simulate pause
+    } else {
+        return KEY_NONE;
+    }
 }
 
-esp_err_t ur_wifi_sta_do_connect(wifi_config_t wifi_config, bool wait)
+#else
+
+void
+init_matrix()
 {
-TP05
-    if (wait) {
-        s_semph_get_ip_addrs = xSemaphoreCreateBinary();
-        if (s_semph_get_ip_addrs == NULL) {
-            return ESP_ERR_NO_MEM;
+//TP05
+    _u8 h, s;
+
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    for (h = 0; h < _NE(key_hot); ++h) {
+        io_conf.pin_bit_mask = 1ULL << key_hot[h];
+        gpio_config(&io_conf);
+    }
+    io_conf.mode = GPIO_MODE_INPUT;
+    for (s = 0; s < _NE(key_sns); ++s) {
+        io_conf.pin_bit_mask = 1ULL << key_sns[s];
+        gpio_config(&io_conf);
+    }
+}
+
+_u8
+scan_matrix()
+{
+//TP05
+    _u8 h, s, i, key;
+
+    key = KEY_NONE;
+    for (h = 0; h < _NE(key_hot); ++h) {
+        for (i = 0; i < _NE(key_hot); ++i) {
+            gpio_set_level(key_hot[i], h == i);
+        }
+        for (s = 0; s < _NE(key_sns); ++s) {
+            if (gpio_get_level(key_sns[s])) {
+                key = h << 4 | s;
+                goto end;
+            }
         }
     }
-    s_retry_num = 0;
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &ur_handler_on_wifi_disconnect, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ur_handler_on_sta_got_ip, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &ur_handler_on_wifi_connect, s_ur_sta_netif));
-    ESP_LOGI(TAG, "Connecting to %s...", wifi_config.sta.ssid);
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    esp_err_t ret = esp_wifi_connect();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi connect failed! ret:%x", ret);
-        return ret;
+end:
+    return key;
+}
+
+#endif
+
+_u32
+wait_for_key_release()
+{
+TP05
+    _u8 key;
+    _u32 cnt = 0;
+
+    while ((key = scan_matrix()) != KEY_NONE) {
+if (DEBUG > 5) PR05("C key: 0x%x\n", key);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        ++cnt;
     }
-    if (wait) {
-        xSemaphoreTake(s_semph_get_ip_addrs, portMAX_DELAY);
-        if (s_retry_num > WIFI_CONN_MAX_RETRY) {
-            return ESP_FAIL;
+if (DEBUG > 1) PR05("key RELEASED\n");
+    return cnt;
+}
+/* ---^^^--- KEY section ---^^^--- */
+
+void
+app_main()
+{
+//TP05
+if (DEBUG) PR05("TP01: %lu\n", esp_log_timestamp());
+    _u8 key;
+
+    init_1st();
+    init_matrix();
+    key = scan_matrix();
+if (DEBUG > 5) PR05("A key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
+    if (key != KEY_NONE && bootCount == 1) {
+PR05("-------OTA-------\n");
+        ESP_ERROR_CHECK(ur_connect(OTA_SSID));
+        esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
+        if (!esp_https_ota(&ota_config)) {
+            esp_restart();
+        } else {
+            PR05("could not OTA\n");
+            key = KEY_NONE;                         // avoid executing further cmds
         }
-    }
-    return ESP_OK;
-}
+        ESP_ERROR_CHECK(ur_disconnect());
 
-esp_err_t ur_wifi_connect(void)
-{
-TP05
-    ESP_LOGI(TAG, "Start ur_connect.");
-    ur_wifi_start();
-    wifi_config_t wifi_config = {
-        .sta = {
-            .ssid = WIFI4_SSID,
-            .password = WIFI4_PASSWORD,
-            .scan_method = WIFI_SCAN_METHOD,
-            .sort_method = WIFI_CONNECT_AP_SORT_METHOD,
-            .threshold.rssi = WIFI_SCAN_RSSI_THRESHOLD,
-            .threshold.authmode = WIFI_SCAN_AUTH_MODE_THRESHOLD,
-        },
-    };
-    return ur_wifi_sta_do_connect(wifi_config, true);
-}
+    } else if (key == KEY_14) {
+PR05("-------DOOR-------\n");
+        _u32 last;
 
-esp_err_t ur_wifi_sta_do_disconnect(void)
-{
-TP05
-    ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &ur_handler_on_wifi_disconnect));
-    ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &ur_handler_on_sta_got_ip));
-    ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &ur_handler_on_wifi_connect));
-    if (s_semph_get_ip_addrs) {
-        vSemaphoreDelete(s_semph_get_ip_addrs);
-    }
-    return esp_wifi_disconnect();
-}
-
-void ur_wifi_stop(void)
-{
-TP05
-    esp_err_t err = esp_wifi_stop();
-    if (err == ESP_ERR_WIFI_NOT_INIT) {
-        return;
-    }
-    ESP_ERROR_CHECK(err);
-    ESP_ERROR_CHECK(esp_wifi_deinit());
-    ESP_ERROR_CHECK(esp_wifi_clear_default_wifi_driver_and_handlers(s_ur_sta_netif));
-    esp_netif_destroy(s_ur_sta_netif);
-    s_ur_sta_netif = NULL;
-}
-
-void ur_wifi_shutdown(void)
-{
-TP05
-    ur_wifi_sta_do_disconnect();
-    ur_wifi_stop();
-}
-
-void ur_print_all_netif_ips(const char *prefix)
-{
-TP05
-    // iterate over active interfaces, and print out IPs of "our" netifs
-    esp_netif_t *netif = NULL;
-    for (int i = 0; i < esp_netif_get_nr_of_ifs(); ++i) {
-        netif = esp_netif_next(netif);
-        if (ur_is_our_netif(prefix, netif)) {
-            ESP_LOGI(TAG, "Connected to %s", esp_netif_get_desc(netif));
-            esp_netif_ip_info_t ip;
-            ESP_ERROR_CHECK(esp_netif_get_ip_info(netif, &ip));
-            ESP_LOGI(TAG, "- IPv4 address: " IPSTR ",", IP2STR(&ip.ip));
+#if 0
+        ESP_ERROR_CHECK(ur_connect(DOOR_SSID));
+        if (mysend(DOOR_CMD_ASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
+            PR05("could not assert signal\n");
+            goto err;
         }
-    }
-}
-
-esp_err_t ur_connect(void)
-{
-TP05
-    if (ur_wifi_connect() != ESP_OK) {
-        return ESP_FAIL;
-    }
-    ESP_ERROR_CHECK(esp_register_shutdown_handler(&ur_wifi_shutdown));
-    return ESP_OK;
-}
-
-esp_err_t ur_disconnect(void)
-{
-TP05
-    ur_wifi_shutdown();
-    ESP_ERROR_CHECK(esp_unregister_shutdown_handler(&ur_wifi_shutdown));
-    return ESP_OK;
-}
-
-void app_main(void)
-{
-TP05
-    const uint64_t ext_wakeup_pin_1_mask = 1ULL << BUTTON;
-    const struct addrinfo hints = {
-        .ai_family = AF_INET,
-        .ai_socktype = SOCK_STREAM,
-    };
-    struct addrinfo *res;
-    int s, r;
-    char recv_buf[128];
-
-if (DEBUG) printf("TP01: %lu\n", esp_log_timestamp());
-    ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK(ur_connect());
-if (DEBUG) printf("TP02: %lu WiFi connected\n", esp_log_timestamp());
-    int err = getaddrinfo(TARGET_HOST, TARGET_PORT, &hints, &res);
-    if(err != 0 || res == NULL) {
-        ESP_LOGE(TAG, "DNS lookup failed err=%d res=%p", err, res);
-        goto out1;
-    }
-    s = socket(res->ai_family, res->ai_socktype, 0);
-    if(s < 0) {
-        ESP_LOGE(TAG, "... Failed to allocate socket.");
-        freeaddrinfo(res);
-        goto out2;
-    }
-    if(connect(s, res->ai_addr, res->ai_addrlen) != 0) {
-        ESP_LOGE(TAG, "... socket connect failed errno=%d", errno);
-        close(s);
-        freeaddrinfo(res);
-        goto out2;
-    }
-    freeaddrinfo(res);
-    if (write(s, CMD, strlen(CMD)) < 0) {
-        ESP_LOGE(TAG, "... socket send failed");
-        close(s);
-        goto out2;
-    }
-if (DEBUG) printf("TP03: %lu %s", esp_log_timestamp(), CMD);
-    do {
-        r = read(s, recv_buf, sizeof(recv_buf) - 1);
-        if (recv_buf[r - 1] == '\n') {
-            recv_buf[r - 1] = 0;
-if (DEBUG) printf("TP04: %lu %s\n", esp_log_timestamp(), recv_buf);
-            goto out2;
+        last = wait_for_key_release();
+        if (mysend(DOOR_CMD_DEASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
+            PR05("could not deassert signal\n");
+            goto err;
         }
-    } while (r > 0);
-out2:
-    close(s);
-out1:
-    ESP_ERROR_CHECK(ur_disconnect());
-    ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup(ext_wakeup_pin_1_mask, ESP_EXT1_WAKEUP_ANY_HIGH));
-ESP_LOGE(TAG, "Entering deep sleep\n");
+        if (last > 4) {
+            key = KEY_14;   // fake key for TETHER_OFF
+        } else {
+            key = KEY_NONE;
+        }
+#endif
+    }
+    if (key != KEY_NONE) {
+PR05("-------SMARTPH-------\n");
+//      ESP_ERROR_CHECK(ur_connect(SMART_SSID));
+        ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
+if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
+        exec_cmd(key);
+        ESP_ERROR_CHECK(ur_disconnect());
+    }
+err:
+    wait_for_key_release(); // avoid looping through deep sleep
+    ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup(KEY_SNS_MASK, ESP_EXT1_WAKEUP_ANY_HIGH));
+PR05("going to deep sleep\n");
     esp_deep_sleep_start();
 }
+

@@ -83,12 +83,35 @@ debug protocol output as of current git
         load:0x40080400,len:4
         0x40080400: _init at ??:?
 
-        load:0x40080404,len:3372
-        entry 0x400805a4
-        TP01: 42
-        TP02: 162 WiFi connected
-        TP03: 182 @beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^   # <-- CMD issued
-        TP04: 202 #[XX]#[0]#[0]#[xxx]#[0]#[0]                   # <-- STATUS reveived - 202ms overall elapsed time between keypress (wakeup) to status (received from remote machine)
-        E (212) wifi:NAN WiFi stop
-        Entering deep sleep
+        load:0x40080404,len:3348
+        entry 0x40080598
+        TP01: 41
+        bootCount: 7
+        CPU0 reset reason: Deep Sleep reset digital core
+        CPU1 reset reason: for APP CPU, reseted by PRO CPU
+        wakeup caused by external signal using RTC_CNTL (EXT1)
+        wakeup by ext1 [ 0x0000000000000004 ], PIN: 2
+        A key: 0x23 [ 71 ]
+        -------DOOR-------
+        -------SMARTPH-------
+        ur_connect
+        ur_wifi_connect
+        ur_wifi_start
+        ur_wifi_sta_do_connect
+        ur_handler_on_wifi_connect
+        ur_handler_on_sta_got_ip
+        ur_is_our_netif
+        TP02: 161 WiFi connected
+        exec_cmd
+        mysend
+        cmd: 161 @beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^ -> rpi-5@8889  # <-- CMD issued
+        stat: 201 #[XX]#[0]#[0]#[xxx]#[0]#[0]                               # <-- STATUS reveived - 201ms overall elapsed time between keypress (wakeup) to status (received from remote machine)
+        ur_disconnect
+        ur_wifi_shutdown
+        ur_wifi_sta_do_disconnect
+        ur_wifi_stop
+        E (211) wifi:NAN WiFi stop
+        wait_for_key_release
+        key RELEASED
+        going to deep sleep
 
