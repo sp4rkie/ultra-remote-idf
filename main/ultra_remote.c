@@ -146,12 +146,15 @@ TP05
         cmd = "zj";
     } else if (key == KEY_13) {
         cmd = "zv";
-    } else if (key == KEY_14) {
-#if defined(ESP32_2)
-        cmd = "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^";
-#else
-        cmd = "bz";     // available explicitly
-#endif
+    } else if (key == KEY_14) {     // key may have caused other activities before
+
+
+//      cmd = "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^";
+//      cmd = "bz"; 
+        cmd = SMART_CMD_TETHER_OFF_DEL;
+
+
+
     } else {
         PR05("illeg key: %02x\n", key);
     }
@@ -184,7 +187,7 @@ scan_matrix()
 {
 //TP05
     if (gpio_get_level(KEY_FAKE_1)) {  // high if pressed
-//        return KEY_14;  // simulate beep
+        return KEY_14;  // simulate opul
         return KEY_01;  // simulate pause
     } else {
         return KEY_NONE;
@@ -247,7 +250,7 @@ if (DEBUG > 5) PR05("C key: 0x%x\n", key);
         vTaskDelay(100 / portTICK_PERIOD_MS);
         ++cnt;
     }
-if (DEBUG > 1) PR05("key RELEASED\n");
+if (DEBUG > 1) PR05("key RELEASED after [ %d ]\n", cnt);
     return cnt;
 }
 /* ---^^^--- KEY section ---^^^--- */
@@ -266,6 +269,7 @@ if (DEBUG > 5) PR05("A key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
     if (key != KEY_NONE && bootCount == 1) {
 PR05("-------OTA-------\n");
         ESP_ERROR_CHECK(ur_connect(OTA_SSID));
+if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
         esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
         if (!esp_https_ota(&ota_config)) {
             esp_restart();
@@ -279,23 +283,27 @@ PR05("-------OTA-------\n");
 PR05("-------DOOR-------\n");
         _u32 last;
 
-#if 0
-        ESP_ERROR_CHECK(ur_connect(DOOR_SSID));
+        ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
+//      ESP_ERROR_CHECK(ur_connect(DOOR_SSID));
+if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
         if (mysend(DOOR_CMD_ASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
             PR05("could not assert signal\n");
+            ESP_ERROR_CHECK(ur_disconnect());
             goto err;
         }
         last = wait_for_key_release();
         if (mysend(DOOR_CMD_DEASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
             PR05("could not deassert signal\n");
+            ESP_ERROR_CHECK(ur_disconnect());
             goto err;
         }
+        ESP_ERROR_CHECK(ur_disconnect());
         if (last > 4) {
-            key = KEY_14;   // fake key for TETHER_OFF
+//            key = KEY_14;   // fake key for TETHER_OFF
         } else {
             key = KEY_NONE;
         }
-#endif
+
     }
     if (key != KEY_NONE) {
 PR05("-------SMARTPH-------\n");
