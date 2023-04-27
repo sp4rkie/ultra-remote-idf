@@ -384,7 +384,9 @@ TP05
     _i32 tmp = tone_duration - ((_u32)esp_timer_get_time() / portTICK_PERIOD_MS - tone_last_syncpoint);
 
     if (tmp > 0) {
-if (DEBUG > 5) PR05("syncing tone(s) for %dms\n", tmp);
+#if DEBUG > 5
+        PR05("syncing tone(s) for %dms\n", tmp);
+#endif
         vTaskDelay(tmp / portTICK_PERIOD_MS);
     }
     tone_last_syncpoint = (_u32)esp_timer_get_time() / portTICK_PERIOD_MS;
@@ -423,6 +425,9 @@ void beep(_u32 frequ, _u32 cnt) {}
 #define ROTA2G_SSID 4
 #define ROTA5G_SSID 5
 
+#define GET_SSID(indx) (accpts[((indx) << 1) + 0])
+#define GET_PASS(indx) (accpts[((indx) << 1) + 1])
+
 static _i32 s_retry_num = 0;
 static esp_netif_t *s_ur_sta_netif = 0;
 static SemaphoreHandle_t s_semph_get_ip_addrs = 0;
@@ -437,7 +442,7 @@ _i8p accpts[] = {
     WIFI5_SSID, WIFI5_PASSWORD,
 };
 
-#define WIFI_CONN_MAX_RETRY 6
+#define WIFI_CONN_MAX_RETRY 1
 #define WIFI_SCAN_RSSI_THRESHOLD -127
 #define WIFI_SCAN_METHOD WIFI_FAST_SCAN
 #define WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
@@ -599,9 +604,11 @@ TP05
             .threshold.authmode = WIFI_SCAN_AUTH_MODE_THRESHOLD,
         },
     };
-    strcpy((_i8p)wifi_config.sta.ssid, accpts[(ssid << 1) + 0]);
-    strcpy((_i8p)wifi_config.sta.password, accpts[(ssid << 1) + 1]);
-if (DEBUG > 5) PR05("SSID: %s\n", wifi_config.sta.ssid);
+    strcpy((_i8p)wifi_config.sta.ssid, GET_SSID(ssid));
+    strcpy((_i8p)wifi_config.sta.password, GET_PASS(ssid));
+#if DEBUG > 5
+    PR05("SSID: %s\n", wifi_config.sta.ssid);
+#endif
     return ur_wifi_sta_do_connect(wifi_config, true);
 }
 
@@ -805,7 +812,9 @@ mysend(_i8p cmd, _i8p host, _i8p port, _i8p *statmsg)
 {
 TP05
     if (!host) host = gw_ip;
-if (DEBUG > 5) PR05("cmd: %lu %s -> %s@%s\n", esp_log_timestamp(), cmd, host, port);
+#if DEBUG > 5
+    PR05("cmd: %lu %s -> %s@%s\n", esp_log_timestamp(), cmd, host, port);
+#endif
     const struct addrinfo hints = {
         .ai_family = AF_INET,
         .ai_socktype = SOCK_STREAM,
@@ -852,14 +861,20 @@ if (DEBUG > 5) PR05("cmd: %lu %s -> %s@%s\n", esp_log_timestamp(), cmd, host, po
     r = read(s, cr_buf, sizeof(cr_buf) - 1);
     if (r > 0 && cr_buf[r - 1] == '\n') {
         cr_buf[r - 1] = 0;
-if (DEBUG > 5) PR05("stat: %lu %s\n", esp_log_timestamp(), cr_buf);
+#if DEBUG 
+        PR05("stat: %lu %s\n", esp_log_timestamp(), cr_buf);
+#endif
         if (err = regexec(&_regex, cr_buf, _NE(_pmatch), _pmatch, 0)) {
             // no match
             regerror(err, &_regex, _buf, _SZ(_buf));
-if (DEBUG > 1) PR05("%s\n", _buf);
+#if DEBUG > 1
+            PR05("%s\n", _buf);
+#endif
             stat = 4;
         } else if (strncmp("0", cr_buf + _pmatch[STAT_STAT].rm_so, 1)) {
-if (DEBUG > 1) PR05("status failed\n");
+#if DEBUG > 1
+            PR05("status failed\n");
+#endif
             stat = 5;
         } else {
             // valid res
@@ -897,14 +912,14 @@ init_1st()
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ++bootCount;
-if (DEBUG > 5) PR05("bootCount: %d\n", bootCount);
-
-if (DEBUG > 5) print_reset_reason(0);
-if (DEBUG > 5) print_reset_reason(1);
-if (DEBUG > 5) print_wakeup_reason();
-//if (DEBUG > 5) WiFi.onEvent(WiFiEvent);
-
-#ifdef TARGET_PORT
+#if DEBUG > 5
+    PR05("bootCount: %d\n", bootCount);
+    print_reset_reason(0);
+    print_reset_reason(1);
+    print_wakeup_reason();
+    //WiFi.onEvent(WiFiEvent);
+#endif
+#if defined(TARGET_PORT)
     if (err = regcomp(&_regex, STATUS_MATCH, REG_EXTENDED)) {
         regerror(err, &_regex, _buf, _SZ(_buf));
         PR05("%s\n", _buf);

@@ -25,9 +25,15 @@
 
 #if defined(ESP32_2)
 #   define DEBUG    10
+
+//  V1  V2
+//  0   0   trigger dual route assert (DOOR) + tether-off (SMART) == standard
+//  0   1   trigger dual route assert (ROTA2G) + pause (SMART)
+//  1   0   trigger single route beep (ROTA2G)
+//  1   1   trigger single route pause (SMART)
 //#   define KEY_OVERRIDE_xx    // if none defined: standard -> so (for ESP32_2) define either of those:
-//#   define KEY_OVERRIDE_V1    // if defined: route single beep via rpi-5
-#   define KEY_OVERRIDE_V2    // if defined: route door cmds + pause (no tether off) via ROTA2G (not DOOR)
+//#   define KEY_OVERRIDE_V1    // if defined: trigger single route 
+//#   define KEY_OVERRIDE_V2    // if defined: trigger pause
 #elif defined(ESP32_12)
 #   define DEBUG     1
 //#   define BUZZER    2
@@ -36,6 +42,10 @@ this may not happen
 #endif
 
 #include "mlcf.h"
+#if DEBUG < 5
+    #undef TP05
+    #define TP05
+#endif
 #ifdef MCFG_LOCAL
 #include "mcfg_local.h"
 #include "mcfg_locals.h"
@@ -150,7 +160,7 @@ TP05
     } else if (key == KEY_13) {
         cmd = "zv";
     } else if (key == KEY_14) { // key may have caused other activities before, but required SSID now already in place
-#if defined(KEY_OVERRIDE_V1)
+#if defined(KEY_OVERRIDE_V1) && !defined(KEY_OVERRIDE_V2)
 //      cmd = "bz";             // err beep
         cmd = "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^";
 #elif defined(KEY_OVERRIDE_V2)
@@ -250,11 +260,15 @@ TP05
     _u32 cnt = 0;
 
     while ((key = scan_matrix()) != KEY_NONE) {
-if (DEBUG > 5) PR05("C key: 0x%x\n", key);
+#if DEBUG > 5
+        PR05("key: 0x%x\n", key);
+#endif
         vTaskDelay(100 / portTICK_PERIOD_MS);
         ++cnt;
     }
-if (DEBUG > 1) PR05("key RELEASED after [ %d ]\n", cnt);
+#if DEBUG > 1
+    PR05("key RELEASED after [ %d ]\n", cnt);
+#endif
     return cnt;
 }
 /* ---^^^--- KEY section ---^^^--- */
@@ -263,26 +277,33 @@ void
 app_main()
 {
 //TP05
-if (DEBUG) PR05("TP01: %lu\n", esp_log_timestamp());
+#if DEBUG
+    PR05("TP01: %lu\n", esp_log_timestamp());
+#endif
     _u8 key;
 
     init_1st();
     init_matrix();
     key = scan_matrix();
-if (DEBUG > 5) {
+#if DEBUG > 5 
 #if defined(KEY_OVERRIDE_V1)
     PR05("KEY_OVERRIDE: V1\n");
-#elif defined(KEY_OVERRIDE_V2)
+#endif
+#if defined(KEY_OVERRIDE_V2)
     PR05("KEY_OVERRIDE: V2\n");
-#else
-    PR05("KEY_OVERRIDE: off\n");
 #endif
     PR05("key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
-}
+#endif
+    if (key == KEY_NONE) goto err1;
     if (key != KEY_NONE && bootCount == 1) {
 PR05("-------OTA-------\n");
-        ESP_ERROR_CHECK(ur_connect(OTA_SSID));
-if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
+        if (ur_connect(OTA_SSID)) {
+            PR05("could not connect to %s\n", GET_SSID(OTA_SSID));
+            goto err1;
+        }
+#if DEBUG
+        PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
+#endif
         esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
         if (!esp_https_ota(&ota_config)) {
             esp_restart();
@@ -290,53 +311,68 @@ if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
             PR05("could not OTA\n");
             key = KEY_NONE;                         // avoid executing further cmds
         }
-        ESP_ERROR_CHECK(ur_disconnect());
 
 #if !defined(KEY_OVERRIDE_V1)
     } else if (key == KEY_14) {
-PR05("-------DOOR-------\n");
+#if DEBUG > 5
+        PR05("-------DOOR-------\n");
+#endif
         _u32 last;
 #if defined(KEY_OVERRIDE_V2)
-        ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
+        if (ur_connect(ROTA2G_SSID)) {
+            PR05("could not connect to %s\n", GET_SSID(ROTA2G_SSID));
 #else
-        ESP_ERROR_CHECK(ur_connect(DOOR_SSID));
+        if (ur_connect(DOOR_SSID)) {
+            PR05("could not connect to %s\n", GET_SSID(DOOR_SSID));
 #endif
-if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
+            goto err1;
+        }
+#if DEBUG
+        PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
+#endif
         if (mysend(DOOR_CMD_ASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
             PR05("could not assert signal\n");
-            ESP_ERROR_CHECK(ur_disconnect());
-            goto err;
+            goto err2;
         }
         last = wait_for_key_release();
         if (mysend(DOOR_CMD_DEASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
             PR05("could not deassert signal\n");
-            ESP_ERROR_CHECK(ur_disconnect());
-            goto err;
+            goto err2;
         }
-        ESP_ERROR_CHECK(ur_disconnect());
         if (last > 4) {
-//            key = KEY_14;   // fake key for TETHER_OFF
+            ESP_ERROR_CHECK(ur_disconnect());
         } else {
-            key = KEY_NONE;
+            key = KEY_NONE; // switch tether off only for DOOR SIGNAL exceeding a minimum time interval 
         }
 #endif
     }
 
     if (key != KEY_NONE) {
-PR05("-------SMARTPH-------\n");
-#if defined(KEY_OVERRIDE_V1)
-        ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
-#else
-        ESP_ERROR_CHECK(ur_connect(SMART_SSID));
+#if DEBUG > 5
+        PR05("-------SMARTPH-------\n");
 #endif
-if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
+#if defined(KEY_OVERRIDE_V1) && !defined(KEY_OVERRIDE_V2)
+        if (ur_connect(ROTA2G_SSID)) {
+            PR05("could not connect to %s\n", GET_SSID(ROTA2G_SSID));
+#else
+        if (ur_connect(SMART_SSID)) {
+            PR05("could not connect to %s\n", GET_SSID(SMART_SSID));
+#endif
+            goto err1;
+        }
+#if DEBUG
+        PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
+#endif
         exec_cmd(key);
-        ESP_ERROR_CHECK(ur_disconnect());
     }
-err:
+err2:
+    ESP_ERROR_CHECK(ur_disconnect());
+err1:
     wait_for_key_release(); // avoid looping through deep sleep
     ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup(KEY_SNS_MASK, ESP_EXT1_WAKEUP_ANY_HIGH));
-PR05("going to deep sleep\n");
+#if DEBUG > 5
+    PR05("going to deep sleep\n");
+#endif
     esp_deep_sleep_start();
 }
 
