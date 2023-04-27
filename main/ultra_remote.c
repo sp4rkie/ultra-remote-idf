@@ -25,6 +25,9 @@
 
 #if defined(ESP32_2)
 #   define DEBUG    10
+//#   define KEY_OVERRIDE_xx    // if none defined: standard -> so (for ESP32_2) define either of those:
+//#   define KEY_OVERRIDE_V1    // if defined: route single beep via rpi-5
+#   define KEY_OVERRIDE_V2    // if defined: route door cmds + pause (no tether off) via ROTA2G (not DOOR)
 #elif defined(ESP32_12)
 #   define DEBUG     1
 //#   define BUZZER    2
@@ -146,20 +149,22 @@ TP05
         cmd = "zj";
     } else if (key == KEY_13) {
         cmd = "zv";
-    } else if (key == KEY_14) {     // key may have caused other activities before
-
-
-//      cmd = "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^";
-//      cmd = "bz"; 
+    } else if (key == KEY_14) { // key may have caused other activities before, but required SSID now already in place
+#if defined(KEY_OVERRIDE_V1)
+//      cmd = "bz";             // err beep
+        cmd = "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^";
+#elif defined(KEY_OVERRIDE_V2)
+        cmd = "zp";
+#else
         cmd = SMART_CMD_TETHER_OFF_DEL;
-
-
-
+#endif
     } else {
         PR05("illeg key: %02x\n", key);
     }
     if (cmd) {
-        mysend(cmd, SMART_TARGET_HOST, SMART_TARGET_PORT, 0);
+        if (mysend(cmd, SMART_TARGET_HOST, SMART_TARGET_PORT, 0)) {
+            PR05("cmd failed\n");
+        }
     }
 }
 
@@ -188,7 +193,6 @@ scan_matrix()
 //TP05
     if (gpio_get_level(KEY_FAKE_1)) {  // high if pressed
         return KEY_14;  // simulate opul
-        return KEY_01;  // simulate pause
     } else {
         return KEY_NONE;
     }
@@ -265,7 +269,16 @@ if (DEBUG) PR05("TP01: %lu\n", esp_log_timestamp());
     init_1st();
     init_matrix();
     key = scan_matrix();
-if (DEBUG > 5) PR05("A key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
+if (DEBUG > 5) {
+#if defined(KEY_OVERRIDE_V1)
+    PR05("KEY_OVERRIDE: V1\n");
+#elif defined(KEY_OVERRIDE_V2)
+    PR05("KEY_OVERRIDE: V2\n");
+#else
+    PR05("KEY_OVERRIDE: off\n");
+#endif
+    PR05("key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
+}
     if (key != KEY_NONE && bootCount == 1) {
 PR05("-------OTA-------\n");
         ESP_ERROR_CHECK(ur_connect(OTA_SSID));
@@ -279,12 +292,15 @@ if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
         }
         ESP_ERROR_CHECK(ur_disconnect());
 
+#if !defined(KEY_OVERRIDE_V1)
     } else if (key == KEY_14) {
 PR05("-------DOOR-------\n");
         _u32 last;
-
+#if defined(KEY_OVERRIDE_V2)
         ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
-//      ESP_ERROR_CHECK(ur_connect(DOOR_SSID));
+#else
+        ESP_ERROR_CHECK(ur_connect(DOOR_SSID));
+#endif
 if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
         if (mysend(DOOR_CMD_ASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
             PR05("could not assert signal\n");
@@ -303,12 +319,16 @@ if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
         } else {
             key = KEY_NONE;
         }
-
+#endif
     }
+
     if (key != KEY_NONE) {
 PR05("-------SMARTPH-------\n");
+#if defined(KEY_OVERRIDE_V1)
+        ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
+#else
         ESP_ERROR_CHECK(ur_connect(SMART_SSID));
-//      ESP_ERROR_CHECK(ur_connect(ROTA2G_SSID));
+#endif
 if (DEBUG) PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
         exec_cmd(key);
         ESP_ERROR_CHECK(ur_disconnect());

@@ -144,18 +144,18 @@ print_wakeup_reason()
 
 #ifdef ESP_IDF_VERSION_MAJOR // IDF 4+
 #if CONFIG_IDF_TARGET_ESP32 // ESP32/PICO-D4
-#include "esp32/rom/rtc.h"                      // <== OURs!
+#include "esp32/rom/rtc.h"   
 #elif CONFIG_IDF_TARGET_ESP32S2
-//#include "esp32s2/rom/rtc.h"
+#include "esp32s2/rom/rtc.h"
 #elif CONFIG_IDF_TARGET_ESP32C3
-//#include "esp32c3/rom/rtc.h"
+#include "esp32c3/rom/rtc.h"
 #elif CONFIG_IDF_TARGET_ESP32S3
-//#include "esp32s3/rom/rtc.h"
+#include "esp32s3/rom/rtc.h"
 #else
 #error Target CONFIG_IDF_TARGET is not supported
 #endif
 #else // ESP32 Before IDF 4.0
-//#include "rom/rtc.h"
+#include "rom/rtc.h"
 #endif
 
 void 
@@ -601,6 +601,7 @@ TP05
     };
     strcpy((_i8p)wifi_config.sta.ssid, accpts[(ssid << 1) + 0]);
     strcpy((_i8p)wifi_config.sta.password, accpts[(ssid << 1) + 1]);
+if (DEBUG > 5) PR05("SSID: %s\n", wifi_config.sta.ssid);
     return ur_wifi_sta_do_connect(wifi_config, true);
 }
 
@@ -825,11 +826,10 @@ if (DEBUG > 5) PR05("cmd: %lu %s -> %s@%s\n", esp_log_timestamp(), cmd, host, po
         PR05("... Failed to allocate socket.\n");
         freeaddrinfo(res);
         stat = 2;
-        goto out2;
+        goto out1;
     }
     if (connect(s, res->ai_addr, res->ai_addrlen) != 0) {
         PR05("... socket connect failed errno=%d\n", errno);
-        close(s);
         freeaddrinfo(res);
         stat = 2;
         goto out2;
@@ -838,33 +838,39 @@ if (DEBUG > 5) PR05("cmd: %lu %s -> %s@%s\n", esp_log_timestamp(), cmd, host, po
     snprintf(cr_buf, _SZ(cr_buf), "%s\n", cmd);
     if (write(s, cr_buf, strlen(cr_buf)) < 0) {
         PR05("... socket send failed\n");
-        close(s);
         stat = 3;
         goto out2;
     }
-    do {
-        r = read(s, cr_buf, sizeof(cr_buf) - 1);
-        if (cr_buf[r - 1] == '\n') {
-            cr_buf[r - 1] = 0;
+    struct timeval receiving_timeout;
+    receiving_timeout.tv_sec = 5;
+    receiving_timeout.tv_usec = 0;
+    if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &receiving_timeout, sizeof(receiving_timeout)) < 0) {
+        PR05("... failed to set socket receiving timeout\n");
+        stat = 3;
+        goto out2;
+    }
+    r = read(s, cr_buf, sizeof(cr_buf) - 1);
+    if (r > 0 && cr_buf[r - 1] == '\n') {
+        cr_buf[r - 1] = 0;
 if (DEBUG > 5) PR05("stat: %lu %s\n", esp_log_timestamp(), cr_buf);
-            if (err = regexec(&_regex, cr_buf, _NE(_pmatch), _pmatch, 0)) {
-                // no match
-                regerror(err, &_regex, _buf, _SZ(_buf));
+        if (err = regexec(&_regex, cr_buf, _NE(_pmatch), _pmatch, 0)) {
+            // no match
+            regerror(err, &_regex, _buf, _SZ(_buf));
 if (DEBUG > 1) PR05("%s\n", _buf);
-                stat = 4;
-            } else if (strncmp("0", cr_buf + _pmatch[STAT_STAT].rm_so, 1)) {
+            stat = 4;
+        } else if (strncmp("0", cr_buf + _pmatch[STAT_STAT].rm_so, 1)) {
 if (DEBUG > 1) PR05("status failed\n");
-                stat = 5;
-            } else {
-                // valid res
-                *_buf = 0;
-                strncat(_buf, cr_buf + _pmatch[STAT_MISC].rm_so, _pmatch[STAT_MISC].rm_eo - _pmatch[STAT_MISC].rm_so);
-                if (statmsg) *statmsg = _buf;                                      
-                stat = 0;
-            }
-            goto out2;
+            stat = 5;
+        } else {
+            // valid res
+            *_buf = 0;
+            strncat(_buf, cr_buf + _pmatch[STAT_MISC].rm_so, _pmatch[STAT_MISC].rm_eo - _pmatch[STAT_MISC].rm_so);
+            if (statmsg) *statmsg = _buf;                                      
+            stat = 0;
         }
-    } while (r > 0);
+    } else {
+        stat = 3;
+    }
 out2:
     close(s);
 out1:
