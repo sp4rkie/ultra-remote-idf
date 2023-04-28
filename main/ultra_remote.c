@@ -24,16 +24,16 @@
 #include "driver/rtc_io.h"
 
 #if defined(ESP32_2)
-#   define DEBUG    10
+#   define DEBUG    1
 //  V1  V2
 //  0   0   trigger dual route assert (DOOR) + tether-off (SMART) == standard
 //  0   1   trigger dual route assert (ROTA2G) + pause (SMART)
 //  1   0   trigger single route beep (ROTA2G)
 //  1   1   trigger single route pause (SMART)
-//#   define KEY_OVERRIDE_V1    
-//#   define KEY_OVERRIDE_V2   
+#   define KEY_OVERRIDE_V1    
+#   define KEY_OVERRIDE_V2   
 #elif defined(ESP32_12)
-#   define DEBUG     1
+//#   define DEBUG     1
 //#   define BUZZER    2
 #else
 #error: no ESP32_x device defined
@@ -292,17 +292,17 @@ app_main()
 #endif
     PR05("key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
 #endif
-    if (key == KEY_NONE) goto err1;
+    if (key == KEY_NONE) goto out2;
     if (key != KEY_NONE && bootCount == 1) {
 PR05("-------OTA-------\n");
-        if (ur_connect(OTA_SSID)) {
+        if (ur_connect(OTA_SSID, 1)) {
             PR05("could not connect to %s\n", GET_SSID(OTA_SSID));
-            goto err1;
+            goto out2;
         }
+        esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
 #if DEBUG
         PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
 #endif
-        esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
         if (!esp_https_ota(&ota_config)) {
             esp_restart();
         } else {
@@ -317,25 +317,26 @@ PR05("-------OTA-------\n");
 #endif
         _u32 last;
 #if defined(KEY_OVERRIDE_V2)
-        if (ur_connect(ROTA2G_SSID)) {
+        if (ur_connect(ROTA2G_SSID, 0)) {
             PR05("could not connect to %s\n", GET_SSID(ROTA2G_SSID));
 #else
-        if (ur_connect(DOOR_SSID)) {
+        if (ur_connect(DOOR_SSID, 0)) {
             PR05("could not connect to %s\n", GET_SSID(DOOR_SSID));
 #endif
-            goto err1;
+            goto out2;
         }
+        esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
 #if DEBUG
         PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
 #endif
         if (mysend(DOOR_CMD_ASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
             PR05("could not assert signal\n");
-            goto err2;
+            goto out1;
         }
         last = wait_for_key_release();
         if (mysend(DOOR_CMD_DEASSERT, DOOR_TARGET_HOST, DOOR_TARGET_PORT, 0)) {
             PR05("could not deassert signal\n");
-            goto err2;
+            goto out1;
         }
         if (last > 4) {
             ESP_ERROR_CHECK(ur_disconnect());
@@ -350,22 +351,25 @@ PR05("-------OTA-------\n");
         PR05("-------SMARTPH-------\n");
 #endif
 #if defined(KEY_OVERRIDE_V1) && !defined(KEY_OVERRIDE_V2)
-        if (ur_connect(ROTA2G_SSID)) {
+        if (ur_connect(ROTA2G_SSID, 0)) {
             PR05("could not connect to %s\n", GET_SSID(ROTA2G_SSID));
 #else
-        if (ur_connect(SMART_SSID)) {
+        if (ur_connect(SMART_SSID, 0)) {
             PR05("could not connect to %s\n", GET_SSID(SMART_SSID));
 #endif
-            goto err1;
+            goto out2;
         }
+        esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
 #if DEBUG
         PR05("TP02: %lu WiFi connected\n", esp_log_timestamp());
 #endif
         exec_cmd(key);
     }
-err2:
+#if !defined(KEY_OVERRIDE_V1)
+out1:
+#endif
     ESP_ERROR_CHECK(ur_disconnect());
-err1:
+out2:
     wait_for_key_release(); // avoid looping through deep sleep
     ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup(KEY_SNS_MASK, ESP_EXT1_WAKEUP_ANY_HIGH));
 #if DEBUG > 5
