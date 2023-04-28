@@ -596,8 +596,8 @@ TP05
     ur_wifi_start();
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = WIFI4_SSID,
-            .password = WIFI4_PASSWORD,
+//          .ssid = *WIFI4_SSID,
+//          .password = *WIFI4_PASSWORD,
             .scan_method = WIFI_SCAN_METHOD,
             .sort_method = WIFI_CONNECT_AP_SORT_METHOD,
             .threshold.rssi = WIFI_SCAN_RSSI_THRESHOLD,
@@ -744,7 +744,7 @@ _http_event_handler(esp_http_client_event_t *evt)
 }
 
 esp_http_client_config_t config = {
-    .url = "http://" OTA_MACHINE ":8070/" OTA_IMAGE,
+    .url = _w1("http://" OTA_MACHINE ":8070/" OTA_IMAGE),
     .event_handler = _http_event_handler,
     .keep_alive_enable = true,
 };
@@ -773,7 +773,7 @@ esp_https_ota_config_t ota_config = {
  * also if tampering here. typical stat:
  *    #[GS]#[0]#[0]#[fil]#[ 2.31]#[0]
  */
-_i8p STATUS_MATCH =
+_i8p STATUS_MATCH = _w1(            
                                         // <== in arduino-esp32 JUST ONE \ COMPARED TO l6.awklib?!?!?!?
                                         // <== in esp-idf NONE \ at all COMPARED TO l6.awklib?!?!?!?
                 "^#\\[([^]]+)\\]" \
@@ -781,7 +781,7 @@ _i8p STATUS_MATCH =
                  "#\\[([01])\\]" \
                  "#\\[([a-z0-9]+)\\]" \
                  "#\\[([^()]+)\\]" \
-                 "#\\[([01])\\]$";
+                 "#\\[([01])\\]$");
 regex_t _regex;
 regmatch_t _pmatch[7];  // nr of parenthesized subexprs in STATUS_MATCH + 1
 #define STAT_CMD 1     // parenthesized subexprs indices
@@ -793,18 +793,18 @@ regmatch_t _pmatch[7];  // nr of parenthesized subexprs in STATUS_MATCH + 1
 
 _i8 _buf[128];
 _i8p _err[] = {
-    "-----",   // sample text
+    _w1("-----"),   // sample text
 
     // this module
-    "err#1",   // no WiFi conn (so no status)   
-    "err#2",   // no target conn (so no status)
-    "err#3",   // conn but no status          
-    "err#4",   // wrong status format        
-    "err#5",   // status nok                     
+    _w1("err#1"),   // no WiFi conn (so no status)   
+    _w1("err#2"),   // no target conn (so no status)
+    _w1("err#3"),   // conn but no status          
+    _w1("err#4"),   // wrong status format        
+    _w1("err#5"),   // status nok                     
 
     // others          
-    "err#6",   // temp conversion not complete
-    "err#7",   // temp not plausible
+    _w1("err#6"),   // temp conversion not complete
+    _w1("err#7"),   // temp not plausible
 };
 
 _i32
@@ -864,7 +864,7 @@ TP05
 #if DEBUG 
         PR05("stat: %lu %s\n", esp_log_timestamp(), cr_buf);
 #endif
-        if (err = regexec(&_regex, cr_buf, _NE(_pmatch), _pmatch, 0)) {
+        if (_w2(err = regexec(&_regex, cr_buf, _NE(_pmatch), _pmatch, 0))) {
             // no match
             regerror(err, &_regex, _buf, _SZ(_buf));
 #if DEBUG > 1
@@ -920,7 +920,7 @@ init_1st()
     //WiFi.onEvent(WiFiEvent);
 #endif
 #if defined(TARGET_PORT)
-    if (err = regcomp(&_regex, STATUS_MATCH, REG_EXTENDED)) {
+    if (_w2(err = regcomp(&_regex, STATUS_MATCH, REG_EXTENDED))) {
         regerror(err, &_regex, _buf, _SZ(_buf));
         PR05("%s\n", _buf);
     }

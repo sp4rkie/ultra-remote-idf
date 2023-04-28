@@ -25,20 +25,18 @@
 
 #if defined(ESP32_2)
 #   define DEBUG    10
-
 //  V1  V2
 //  0   0   trigger dual route assert (DOOR) + tether-off (SMART) == standard
 //  0   1   trigger dual route assert (ROTA2G) + pause (SMART)
 //  1   0   trigger single route beep (ROTA2G)
 //  1   1   trigger single route pause (SMART)
-//#   define KEY_OVERRIDE_xx    // if none defined: standard -> so (for ESP32_2) define either of those:
-//#   define KEY_OVERRIDE_V1    // if defined: trigger single route 
-//#   define KEY_OVERRIDE_V2    // if defined: trigger pause
+//#   define KEY_OVERRIDE_V1    
+//#   define KEY_OVERRIDE_V2   
 #elif defined(ESP32_12)
 #   define DEBUG     1
 //#   define BUZZER    2
 #else
-this may not happen
+#error: no ESP32_x device defined
 #endif
 
 #include "mlcf.h"
@@ -134,37 +132,37 @@ TP05
     _i8p cmd = 0;
 
     if (key == KEY_01) {
-        cmd = "zp";
+        cmd = _w1("zp");
     } else if (key == KEY_02) {
-        cmd = "zm";
+        cmd = _w1("zm");
     } else if (key == KEY_03) {
-        cmd = "zh";
+        cmd = _w1("zh");
     } else if (key == KEY_04) {
-        cmd = "zk";
+        cmd = _w1("zk");
     } else if (key == KEY_05) {
-        cmd = "zb";
+        cmd = _w1("zb");
     } else if (key == KEY_06) {
-        cmd = "zn";
+        cmd = _w1("zn");
     } else if (key == KEY_07) {
-        cmd = "zc";
+        cmd = _w1("zc");
     } else if (key == KEY_08) {
-        cmd = "zx";
+        cmd = _w1("zx");
     } else if (key == KEY_09) {
-        cmd = "zt";
+        cmd = _w1("zt");
     } else if (key == KEY_10) {
-        cmd = "zr";
+        cmd = _w1("zr");
     } else if (key == KEY_11) {
-        cmd = "zl";
+        cmd = _w1("zl");
     } else if (key == KEY_12) {
-        cmd = "zj";
+        cmd = _w1("zj");
     } else if (key == KEY_13) {
-        cmd = "zv";
+        cmd = _w1("zv");
     } else if (key == KEY_14) { // key may have caused other activities before, but required SSID now already in place
 #if defined(KEY_OVERRIDE_V1) && !defined(KEY_OVERRIDE_V2)
-//      cmd = "bz";             // err beep
-        cmd = "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^";
+//      cmd = _w1("bz");             // err beep
+        cmd = _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^");
 #elif defined(KEY_OVERRIDE_V2)
-        cmd = "zp";
+        cmd = _w1("zp");
 #else
         cmd = SMART_CMD_TETHER_OFF_DEL;
 #endif
