@@ -493,7 +493,7 @@ bool
 ur_is_our_netif(const _i8 *prefix, esp_netif_t *netif)
 {
 TP05
-    return strncmp(prefix, esp_netif_get_desc(netif), strlen(prefix) - 1) == 0;
+    return !strncmp(prefix, esp_netif_get_desc(netif), strlen(prefix) - 1);
 }
 
 static void
@@ -564,11 +564,9 @@ esp_err_t
 ur_wifi_sta_do_connect(wifi_config_t wifi_config, bool wait)
 {
 TP05
-    if (wait) {
-        s_semph_get_ip_addrs = xSemaphoreCreateBinary();
-        if (!s_semph_get_ip_addrs) {
-            return ESP_ERR_NO_MEM;
-        }
+    s_semph_get_ip_addrs = xSemaphoreCreateBinary();
+    if (!s_semph_get_ip_addrs) {
+        return ESP_ERR_NO_MEM;
     }
     s_retry_num = 0;
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &ur_handler_on_wifi_disconnect, 0));
@@ -590,7 +588,7 @@ TP05
 }
 
 esp_err_t
-ur_wifi_connect(_u8 ssid)
+ur_wifi_connect(_u8 ssid, bool wait)
 {
 TP05
     ur_wifi_start();
@@ -609,7 +607,7 @@ TP05
 #if DEBUG > 5
     PR05("SSID: %s\n", wifi_config.sta.ssid);
 #endif
-    return ur_wifi_sta_do_connect(wifi_config, true);
+    return ur_wifi_sta_do_connect(wifi_config, wait);
 }
 
 esp_err_t
@@ -666,10 +664,10 @@ TP05
 }
 
 esp_err_t
-ur_connect(_u8 ssid)
+ur_connect(_u8 ssid, bool wait)
 {
 TP05
-    if (ur_wifi_connect(ssid) != ESP_OK) {
+    if (ur_wifi_connect(ssid, wait) != ESP_OK) {
         return ESP_FAIL;
     }
     ESP_ERROR_CHECK(esp_register_shutdown_handler(&ur_wifi_shutdown));
@@ -812,8 +810,8 @@ mysend(_i8p cmd, _i8p host, _i8p port, _i8p *statmsg)
 {
 TP05
     if (!host) host = gw_ip;
-#if DEBUG > 5
-    PR05("cmd: %lu %s -> %s@%s\n", esp_log_timestamp(), cmd, host, port);
+#if DEBUG 
+    PR05("cmd: %lu %s -> %s@%s\n", esp_log_timestamp(), cmd, *host ? host : "na", port);
 #endif
     const struct addrinfo hints = {
         .ai_family = AF_INET,
@@ -824,31 +822,38 @@ TP05
     _i32 s, r, err, stat;
 
     stat = 0;
+    if (!*gw_ip) {
+        xSemaphoreTake(s_semph_get_ip_addrs, portMAX_DELAY); // effective no timeout
+        if (s_retry_num > WIFI_CONN_MAX_RETRY) {
+            stat = 1;
+            goto out2;
+        }
+    }
     err = getaddrinfo(host, port, &hints, &res);
     if (err || !res) {
         PR05("DNS lookup failed err=%d res=%p\n", err, res);
         stat = 2;
-        goto out1;
+        goto out2;
     }
     s = socket(res->ai_family, res->ai_socktype, 0);
     if (s < 0) {
         PR05("... Failed to allocate socket.\n");
         freeaddrinfo(res);
         stat = 2;
-        goto out1;
+        goto out2;
     }
-    if (connect(s, res->ai_addr, res->ai_addrlen) != 0) {
+    if (connect(s, res->ai_addr, res->ai_addrlen)) {
         PR05("... socket connect failed errno=%d\n", errno);
         freeaddrinfo(res);
         stat = 2;
-        goto out2;
+        goto out1;
     }
     freeaddrinfo(res);
     snprintf(cr_buf, _SZ(cr_buf), "%s\n", cmd);
     if (write(s, cr_buf, strlen(cr_buf)) < 0) {
         PR05("... socket send failed\n");
         stat = 3;
-        goto out2;
+        goto out1;
     }
     struct timeval receiving_timeout;
     receiving_timeout.tv_sec = 5;
@@ -856,7 +861,7 @@ TP05
     if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &receiving_timeout, sizeof(receiving_timeout)) < 0) {
         PR05("... failed to set socket receiving timeout\n");
         stat = 3;
-        goto out2;
+        goto out1;
     }
     r = read(s, cr_buf, sizeof(cr_buf) - 1);
     if (r > 0 && cr_buf[r - 1] == '\n') {
@@ -886,9 +891,9 @@ TP05
     } else {
         stat = 3;
     }
-out2:
-    close(s);
 out1:
+    close(s);
+out2:
     if (stat) {
         if (statmsg) *statmsg = _err[stat];
         beep(BEEP_ERR, 3);
