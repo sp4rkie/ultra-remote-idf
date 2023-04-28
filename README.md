@@ -65,7 +65,7 @@ how to build
         . ~/esp/esp-idf/export.sh
         git clone git@github.com:sp4rkie/ultra-remote-idf
         cd ultra-remote-idf
-        idf.py flash monitor
+        idf.py -DCMAKE_C_FLAGS='-DESP32_2' flash monitor
 
 debug protocol output as of current git
 ---------------------------------------

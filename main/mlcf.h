@@ -40,6 +40,15 @@ typedef _i64          *_i64p;
 #define _NE(a) (_SZ(a) / _SZ(*(a))) // number of elements
 
 //
+// knock off brainless cc warnings like:
+//
+//  warning: initialization discards 'const' qualifier from pointer target type
+#define _w1(a) ((const _i8p)(a))
+//
+//  warning: suggest parentheses around assignment used as truth value
+#define _w2(a) (a)
+
+//
 // a neat debug foundation [ see fct4_glue.c how to use ]
 //
 
