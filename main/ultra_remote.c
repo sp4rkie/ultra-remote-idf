@@ -30,7 +30,7 @@
 //  0   1   trigger dual route assert (ROTA2G) + pause (SMART)
 //  1   0   trigger single route beep (ROTA2G)
 //  1   1   trigger single route pause (SMART)
-#   define KEY_OVERRIDE_V1    
+//#   define KEY_OVERRIDE_V1    
 //#   define KEY_OVERRIDE_V2   
 #elif defined(ESP32_12)
 //#   define DEBUG     1
@@ -292,8 +292,10 @@ app_main()
 #endif
     PR05("key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
 #endif
+// -----------------------------------------------------
     if (key == KEY_NONE) {
         goto out2;
+// -----------------------------------------------------
     } else if (bootCount == 1) {
 PR05("-------OTA-------\n");
         if (ur_connect(OTA_SSID, 1)) {
@@ -307,7 +309,7 @@ PR05("-------OTA-------\n");
             PR05("could not OTA\n");
             goto out1;             
         }
-
+// -----------------------------------------------------
 #if !defined(KEY_OVERRIDE_V1)
     } else if (key == KEY_14) {
 #if DEBUG > 5
@@ -333,14 +335,13 @@ PR05("-------OTA-------\n");
             PR05("could not deassert signal\n");
             goto out1;
         }
-        if (last > 4) {
-            ESP_ERROR_CHECK(ur_disconnect());
-        } else {
-            key = KEY_NONE; // switch tether off only for DOOR SIGNAL exceeding a minimum time interval 
+        if (last <= 4) {
+            goto out1; // switch tether off only for DOOR SIGNAL exceeding a minimum time interval 
         }
+        ESP_ERROR_CHECK(ur_disconnect());
 #endif
     }
-
+// -----------------------------------------------------
 #if DEBUG > 5
     PR05("-------SMARTPH-------\n");
 #endif
@@ -355,6 +356,7 @@ PR05("-------OTA-------\n");
     }
     esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
     exec_cmd(key);
+// -----------------------------------------------------
 out1:
     ESP_ERROR_CHECK(ur_disconnect());
 out2:
