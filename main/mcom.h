@@ -642,6 +642,7 @@ void
 ur_wifi_shutdown(void)
 {
 TP05
+    *gw_ip = 0; 
     ur_wifi_sta_do_disconnect();
     ur_wifi_stop();
 }
@@ -671,6 +672,9 @@ TP05
         return ESP_FAIL;
     }
     ESP_ERROR_CHECK(esp_register_shutdown_handler(&ur_wifi_shutdown));
+#if DEBUG
+    PR05("TP02: %lu WiFi %s\n", esp_log_timestamp(), wait ? "connected" : "issued");
+#endif
     return ESP_OK;
 }
 
@@ -828,6 +832,9 @@ TP05
             stat = 1;
             goto out2;
         }
+#if DEBUG 
+        PR05("TP03: %lu WiFi %s\n", esp_log_timestamp(), "connected");
+#endif
     }
     err = getaddrinfo(host, port, &hints, &res);
     if (err || !res) {
