@@ -370,50 +370,201 @@ TP05
 
 #ifdef BUZZER
 
-#define SINGLE_PULSE_WIDTH 300
-#define MULTI_PULSE_WIDTH 70
-#define MULTI_PULSE_PAUSE 250
+#define BEEP_SINGLE_PULSE_WIDTH 300000
+#define BEEP_MULTI_PULSE_WIDTH   70000
+#define BEEP_MULTI_PULSE_PAUSE  250000
+#define BEEP_PURGE_PULSE           100
+#define BEEP_VOLUME               2000
 
-_u32 tone_duration;
-_u32 tone_last_syncpoint;
+#define BEEP_QUE_DEPTH 20
 
-void
-beep_sync() 
+typedef struct {
+    _u64 count;
+} beep_timer_t;
+
+typedef struct {
+    _u32 time;
+    _u32 freq;
+    _u32 duty;
+} beep_t;
+
+static _u8 dispatching = 0;
+static QueueHandle_t beep_que = 0;
+static QueueHandle_t beep_timer_que = 0;
+static gptimer_handle_t beep_timer = 0;
+
+void 
+issue_beep(_u32 freq, _u32 duty)
 {
 TP05
-    _i32 tmp = tone_duration - ((_u32)esp_timer_get_time() / portTICK_PERIOD_MS - tone_last_syncpoint);
+    static _u32 was_here;
 
-    if (tmp > 0) {
-#if DEBUG > 5
-        PR05("syncing tone(s) for %dms\n", tmp);
-#endif
-        vTaskDelay(tmp / portTICK_PERIOD_MS);
+    if (freq) {
+        if (was_here) {
+            ESP_ERROR_CHECK(ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, freq));
+            ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty));  // Set duty to 50%. ((2 ** 13) - 1) * 50% = 4095
+        } else {
+            ledc_timer_config_t ledc_timer = {
+                .speed_mode       = LEDC_HIGH_SPEED_MODE,
+                .timer_num        = LEDC_TIMER_0,
+                .duty_resolution  = LEDC_TIMER_13_BIT,
+                .freq_hz          = freq,
+                .clk_cfg          = LEDC_AUTO_CLK
+            };
+            ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+            ledc_channel_config_t ledc_channel = {
+                .speed_mode     = LEDC_HIGH_SPEED_MODE,
+                .channel        = LEDC_CHANNEL_0,
+                .timer_sel      = LEDC_TIMER_0,
+                .intr_type      = LEDC_INTR_DISABLE,
+                .gpio_num       = BUZZER,
+                .duty           = duty,
+            };
+            ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+            ++was_here;
+        }
+        ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
+    } else {
+        if (was_here) {
+            ESP_ERROR_CHECK(ledc_stop(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0));
+        }
     }
-    tone_last_syncpoint = (_u32)esp_timer_get_time() / portTICK_PERIOD_MS;
-    tone_duration = 0;
+}
+
+void 
+dispatch_beeps(void *arg)
+{
+TP05
+    beep_t beep_spec;
+
+    while (1) {
+        dispatching = 0; 
+        if (xQueueReceive(beep_que, &beep_spec, portMAX_DELAY)) {
+            ++dispatching;
+#if DEBUG > 5
+PR05("dispatch_beeps got %d %d %d\n", beep_spec.time, beep_spec.freq, beep_spec.duty);
+#endif
+            gptimer_alarm_config_t alrm = {
+                .alarm_count = beep_spec.time,
+            };
+            ESP_ERROR_CHECK(gptimer_set_alarm_action(beep_timer, &alrm));
+            ESP_ERROR_CHECK(gptimer_set_raw_count(beep_timer, 0));
+            ESP_ERROR_CHECK(gptimer_start(beep_timer));
+            issue_beep(beep_spec.freq, beep_spec.duty);
+            beep_timer_t dummy;
+            xQueueReceive(beep_timer_que, &dummy, portMAX_DELAY);
+        }
+    }
+}
+
+bool 
+IRAM_ATTR beep_timer_alrm(gptimer_handle_t beep_timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+{
+    BaseType_t high_task_awoken = pdFALSE;
+    QueueHandle_t beep_timer_que = (QueueHandle_t)user_data;
+    gptimer_stop(beep_timer);
+    beep_timer_t dummy = {
+        .count = edata->count_value
+    };
+    xQueueSendFromISR(beep_timer_que, &dummy, &high_task_awoken);
+    return (high_task_awoken == pdTRUE);
+}
+
+void
+beep_sync()
+{
+TP05
+    beep_t b_dummy;
+
+    while (xQueuePeek(beep_que, &b_dummy, 0)) {
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+#if DEBUG > 5
+PR05("+");
+#endif
+    }
+    while (dispatching) {
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+#if DEBUG > 5
+PR05("-");
+#endif
+    }
+}
+
+void
+beep_enque(_i32 time, _i32 frequ, _i32 duty)
+{
+TP05
+    beep_t beep_spec;
+
+    beep_spec.time = time;
+    beep_spec.freq = frequ;
+    beep_spec.duty = duty;
+    xQueueSend(beep_que, &beep_spec, 0);
 }
 
 void
 beep(_u32 frequ, _u32 cnt)
 {
 TP05
-    beep_sync();
+#if DEBUG > 5
+PR05("frequ: %d, cnt: %d\n", frequ, cnt);
+#endif
     if (cnt > 1) {
-        tone_duration += cnt * MULTI_PULSE_WIDTH + (cnt - 1) * MULTI_PULSE_PAUSE;
         --cnt;
-        tone(BUZZER, frequ, MULTI_PULSE_WIDTH);
+        beep_enque(BEEP_MULTI_PULSE_WIDTH, frequ, BEEP_VOLUME);
         while (cnt--) {
-            tone(BUZZER, 0, MULTI_PULSE_PAUSE); // effective silent
-            tone(BUZZER, frequ, MULTI_PULSE_WIDTH);
+            beep_enque(BEEP_MULTI_PULSE_PAUSE, 0, 0);
+            beep_enque(BEEP_MULTI_PULSE_WIDTH, frequ, BEEP_VOLUME);
         }
     } else {
-        tone_duration += SINGLE_PULSE_WIDTH;
-        tone(BUZZER, frequ, SINGLE_PULSE_WIDTH);
+        beep_enque(BEEP_SINGLE_PULSE_WIDTH, frequ, BEEP_VOLUME);
     }
+    beep_enque(BEEP_PURGE_PULSE, 0, 0);
 }
+
+void 
+beep_init()
+{
+TP05
+    beep_que = xQueueCreate(BEEP_QUE_DEPTH, sizeof(beep_t));
+    if (!beep_que) {
+        PR05("creating beep_que failed\n");
+        return;
+    }
+    beep_timer_que = xQueueCreate(10, sizeof(beep_timer_t));
+    if (!beep_timer_que) {
+        PR05("creating beep_timer_que failed\n");
+        return;
+    }
+    gptimer_config_t beep_timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1000000, // 1MHz, 1tick == 1us
+    };
+    ESP_ERROR_CHECK(gptimer_new_timer(&beep_timer_config, &beep_timer));
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = beep_timer_alrm,
+    };
+    ESP_ERROR_CHECK(gptimer_register_event_callbacks(beep_timer, &cbs, beep_timer_que));
+    ESP_ERROR_CHECK(gptimer_enable(beep_timer));
+    xTaskCreate(dispatch_beeps, "dispatch_beeps", 2048, NULL, 10, NULL);
+}
+
+void
+beep_deinit()
+{
+TP05
+    ESP_ERROR_CHECK(gptimer_disable(beep_timer));
+    ESP_ERROR_CHECK(gptimer_del_timer(beep_timer));
+    vQueueDelete(beep_timer_que);
+    vQueueDelete(beep_que);
+}
+
 #else
-void beep_sync() {}
 void beep(_u32 frequ, _u32 cnt) {}
+void beep_sync() {}
+void beep_init() {}
+void beep_deinit() {}
 #endif
 /* ---^^^--- acoustic feedback ---^^^--- */
 
@@ -912,18 +1063,26 @@ out2:
 /* ---^^^--- cmd to status ---^^^--- */
 #endif
 
+/* ---vvv--- initialization ---vvv--- */
 RTC_DATA_ATTR _u32 bootCount = 0;
 
 _i32
 init_1st()
 {
-//TP05
-    _i32 err;
-
+TP05
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ++bootCount;
+    return 0;
+}
+
+_i32
+init_2nd()
+{
+TP05
+    _i32 err;
+
 #if DEBUG > 5
     PR05("bootCount: %d\n", bootCount);
     print_reset_reason(0);
@@ -937,6 +1096,20 @@ init_1st()
         PR05("%s\n", _buf);
     }
 #endif
+#if defined(BUZZER)
+    beep_init();
+#endif
     return 0;
 }
+
+_i32
+deinit()
+{
+TP05
+#if defined(BUZZER)
+    beep_deinit();
+#endif
+    return 0;
+}
+/* ---^^^--- initialization ---^^^--- */
 
