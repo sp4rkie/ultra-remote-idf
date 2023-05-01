@@ -21,16 +21,20 @@
 #include "esp_http_client.h"
 #include "nvs_flash.h"
 #include "lwip/netdb.h"
+#include "driver/ledc.h"
 #include "driver/rtc_io.h"
+#include "driver/gptimer.h"
 
 #if defined(ESP32_2)
 #   define DEBUG    1
+#   define BUZZER  23
+
 //  V1  V2
 //  0   0   trigger dual route assert (DOOR) + tether-off (SMART) == standard
 //  0   1   trigger dual route assert (ROTA2G) + pause (SMART)
 //  1   0   trigger single route beep (ROTA2G)
 //  1   1   trigger single route pause (SMART)
-//#   define KEY_OVERRIDE_V1    
+#   define KEY_OVERRIDE_V1    
 //#   define KEY_OVERRIDE_V2   
 #elif defined(ESP32_12)
 //#   define DEBUG     1
@@ -189,7 +193,7 @@ gpio_config_t io_conf = {
 void
 init_matrix()
 {
-//TP05
+TP05
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pin_bit_mask = 1ULL << KEY_FAKE_1;
     gpio_config(&io_conf);
@@ -198,7 +202,7 @@ init_matrix()
 _u8
 scan_matrix()
 {
-//TP05
+TP05
     if (gpio_get_level(KEY_FAKE_1)) {  // high if pressed
         return KEY_14;  // simulate opul
     } else {
@@ -211,7 +215,7 @@ scan_matrix()
 void
 init_matrix()
 {
-//TP05
+TP05
     _u8 h, s;
 
     io_conf.mode = GPIO_MODE_OUTPUT;
@@ -229,7 +233,7 @@ init_matrix()
 _u8
 scan_matrix()
 {
-//TP05
+TP05
     _u8 h, s, i, key;
 
     key = KEY_NONE;
@@ -274,7 +278,7 @@ TP05
 void
 app_main()
 {
-//TP05
+TP05
 #if DEBUG
     PR05("TP01: %lu\n", esp_log_timestamp());
 #endif
@@ -284,14 +288,15 @@ app_main()
     init_matrix();
     key = scan_matrix();
 #if DEBUG > 5 
+    PR05("key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
 #if defined(KEY_OVERRIDE_V1)
     PR05("KEY_OVERRIDE: V1\n");
 #endif
 #if defined(KEY_OVERRIDE_V2)
     PR05("KEY_OVERRIDE: V2\n");
 #endif
-    PR05("key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
 #endif
+    init_2nd();
 // -----------------------------------------------------
     if (key == KEY_NONE) {
         goto out2;
@@ -361,9 +366,10 @@ out1:
     ESP_ERROR_CHECK(ur_disconnect());
 out2:
     wait_for_key_release(); // avoid looping through deep sleep
+    beep_sync();  // wait for all queued tones to be processed 
     ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup(KEY_SNS_MASK, ESP_EXT1_WAKEUP_ANY_HIGH));
 #if DEBUG > 5
-    PR05("going to deep sleep\n");
+    PR05("TP14: %lu\n", esp_log_timestamp());
 #endif
     esp_deep_sleep_start();
 }
