@@ -26,7 +26,7 @@
 #include "driver/gptimer.h"
 
 #if defined(ESP32_2)
-#   define DEBUG    1
+#   define DEBUG    0
 #   define BUZZER  23
 
 //  V1  V2
@@ -34,11 +34,17 @@
 //  0   1   trigger dual route assert (ROTA2G) + pause (SMART)
 //  1   0   trigger single route beep (ROTA2G)
 //  1   1   trigger single route pause (SMART)
-#   define KEY_OVERRIDE_V1    
+//#   define KEY_OVERRIDE_V1    
 //#   define KEY_OVERRIDE_V2   
+
+#elif defined(ESP32_10)
+#   define DEBUG    0
+#   define BUZZER   2
+
 #elif defined(ESP32_12)
-//#   define DEBUG     1
-//#   define BUZZER    2
+#   define DEBUG    0
+//#   define BUZZER   2
+
 #else
 #error: no ESP32_x device defined
 #endif
@@ -57,37 +63,158 @@
 #include "mcom.h"
 
 /* ---vvv--- KEY section ---vvv--- */
+// feeder (hot) keys pulled up by 51k 
+
 // sense keys pulled down by 100k 
 // must be connected to RTC capable terminals to allow ESP_EXT1_WAKEUP_ANY_HIGH
+
+// sense keys connect to feeders on cross points
+// when the corresponding key is depressed.
+// causing a 'high' level being detected to wakeup.
+// after this the matrix is scanned.
+// can optionally use RTC capable terminals (but with no benefit)
+
+#if defined(ESP32_2)
+
+// fake (single) sense key for test device pulled down by 470k
+#define KEY_FAKE_1 2
+#define KEY_SNS_MASK (1 << KEY_FAKE_1)
+#define KEY_14 0x03
+
+void
+exec_cmd(_u8 key)
+{
+TP05
+    _i8p cmd = 0;
+
+    if (key == KEY_14) { // key may have caused other activities before, but required SSID now already in place
+#if defined(KEY_OVERRIDE_V1) && !defined(KEY_OVERRIDE_V2)
+//      cmd = _w1("bz");             // err beep
+        cmd = _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^");
+#elif defined(KEY_OVERRIDE_V2)
+        cmd = _w1("zp");
+#else
+        cmd = SMART_CMD_TETHER_OFF_DEL;
+#endif
+    } else {
+        PR05("illeg key: %02x\n", key);
+    }
+    if (cmd) {
+        if (mysend(cmd, SMART_TARGET_HOST, SMART_TARGET_PORT, 0)) {
+            PR05("cmd failed\n");
+        }
+    }
+}
+
+#elif defined(ESP32_10)
+
+#define KEY_HOT_0 33
+#define KEY_HOT_1 32
+#define KEY_HOT_2  4 
+#define KEY_HOT_3 12
+
+#define KEY_SNS_0 25
+#define KEY_SNS_1 26
+#define KEY_SNS_2 27
+#define KEY_SNS_3 14
+
+#define KEY_SNS_MASK (1 << KEY_SNS_0 | \
+                      1 << KEY_SNS_1 | \
+                      1 << KEY_SNS_2 | \
+                      1 << KEY_SNS_3)
+/*
+00 10
+01 11
+02 12
+03 13
+20 30
+21 31
+22 32
+23 33
+*/
+#define KEY_01 0x10
+#define KEY_02 0x11
+#define KEY_03 0x12
+#define KEY_04 0x13
+#define KEY_05 0x30
+#define KEY_06 0x31
+#define KEY_07 0x32
+#define KEY_08 0x33
+#define KEY_11 0x00
+#define KEY_12 0x01
+#define KEY_13 0x02
+#define KEY_14 0x03
+#define KEY_15 0x20
+#define KEY_16 0x21
+#define KEY_17 0x22
+#define KEY_18 0x23
+
+void
+exec_cmd(_u8 key)
+{
+    _i8p cmd = 0;
+
+    if (key == KEY_11) {
+        cmd = _w1("zp ^");
+    } else if (key == KEY_01) {
+        cmd = _w1("zm ^");
+    } else if (key == KEY_12) {
+//        cmd = _w1("zh ^");
+        cmd = _w1("@vol=5%- ^roja ^");
+    } else if (key == KEY_02) {
+//        cmd = _w1("zk ^");
+        cmd = _w1("@vol=5%+ ^roja ^");
+    } else if (key == KEY_13) {
+        cmd = _w1("zb ^");
+    } else if (key == KEY_03) {
+        cmd = _w1("zn ^");
+    } else if (key == KEY_14) {
+        cmd = _w1("zc ^");
+    } else if (key == KEY_04) {
+        cmd = _w1("zx ^");
+    } else if (key == KEY_15) {
+        cmd = _w1("zt ^");
+    } else if (key == KEY_05) {
+        cmd = _w1("zr ^");
+    } else if (key == KEY_16) {
+        cmd = _w1("cq ^");
+    } else if (key == KEY_06) {
+        cmd = _w1("zv ^");
+    } else if (key == KEY_17) {
+        cmd = _w1("cu ^");
+    } else if (key == KEY_07) {
+//        cmd = _w1("zj ^");
+        cmd = _w1("@vol=60% ^roja ^");
+    } else if (key == KEY_18) {
+        cmd = _w1("cy ^");
+    } else if (key == KEY_08) {
+        cmd = _w1("xc ^");
+    } else {
+        PR05("illeg key: %02x\n", key);
+    }
+    if (cmd) {
+        if (mysend(cmd, TARGET_HOST, TARGET_PORT, 0)) {
+            PR05("cmd failed\n");
+        }
+    }
+}
+
+#elif defined(ESP32_12)
+
+#define KEY_HOT_0 17  
+#define KEY_HOT_1 16
+#define KEY_HOT_2  5
+#define KEY_HOT_3 25 
+
 #define KEY_SNS_0 27
 #define KEY_SNS_1 26
 #define KEY_SNS_2  4
 #define KEY_SNS_3 14
 
-#if defined(ESP32_2)
-// fake sense key pulled down by 470k
-#define KEY_FAKE_1 2
-#define KEY_SNS_MASK (1 << KEY_FAKE_1)
-#else
 #define KEY_SNS_MASK (1 << KEY_SNS_0 | \
                       1 << KEY_SNS_1 | \
                       1 << KEY_SNS_2 | \
                       1 << KEY_SNS_3)
-#endif
-
-// feeder keys pulled up by 51k 
-// sense keys connect to feeders on cross points
-// when the corresponding key is depressed
-// causing a 'high' level being detected to wakeup.
-// after this the matrix is scanned.
-// can optionally use RTC capable terminals (but with no benefit)
-#define KEY_HOT_0  17  
-#define KEY_HOT_1  16
-#define KEY_HOT_2   5
-#define KEY_HOT_3  25 
-
-#define KEY_NONE 0xff
-
 /*
 scanned key codes to key caps ordering (hex):
 
@@ -114,20 +241,6 @@ scanned key codes to key caps ordering (hex):
 #define KEY_12 0x13
 #define KEY_13 0x22
 #define KEY_14 0x23
-
-_u8 key_sns[] = {   // cols
-    KEY_SNS_0,
-    KEY_SNS_1,
-    KEY_SNS_2,
-    KEY_SNS_3,
-};
-
-_u8 key_hot[] = {   // rows
-    KEY_HOT_0,
-    KEY_HOT_1,
-    KEY_HOT_2,
-    KEY_HOT_3,
-};
 
 void
 exec_cmd(_u8 key)
@@ -162,14 +275,7 @@ TP05
     } else if (key == KEY_13) {
         cmd = _w1("zv");
     } else if (key == KEY_14) { // key may have caused other activities before, but required SSID now already in place
-#if defined(KEY_OVERRIDE_V1) && !defined(KEY_OVERRIDE_V2)
-//      cmd = _w1("bz");             // err beep
-        cmd = _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^");
-#elif defined(KEY_OVERRIDE_V2)
-        cmd = _w1("zp");
-#else
         cmd = SMART_CMD_TETHER_OFF_DEL;
-#endif
     } else {
         PR05("illeg key: %02x\n", key);
     }
@@ -179,6 +285,10 @@ TP05
         }
     }
 }
+
+#endif
+
+#define KEY_NONE 0xff
 
 gpio_config_t io_conf = {
     0,
@@ -210,7 +320,22 @@ TP05
     }
 }
 
-#else
+#elif defined(ESP32_10) || \
+      defined(ESP32_12)
+
+_u8 key_sns[] = {   // cols
+    KEY_SNS_0,
+    KEY_SNS_1,
+    KEY_SNS_2,
+    KEY_SNS_3,
+};
+
+_u8 key_hot[] = {   // rows
+    KEY_HOT_0,
+    KEY_HOT_1,
+    KEY_HOT_2,
+    KEY_HOT_3,
+};
 
 void
 init_matrix()
@@ -315,7 +440,7 @@ PR05("-------OTA-------\n");
             goto out1;             
         }
 // -----------------------------------------------------
-#if !defined(KEY_OVERRIDE_V1)
+#if defined(ESP32_2) && !defined(KEY_OVERRIDE_V1) || defined(ESP32_12)
     } else if (key == KEY_14) {
 #if DEBUG > 5
         PR05("-------DOOR-------\n");
