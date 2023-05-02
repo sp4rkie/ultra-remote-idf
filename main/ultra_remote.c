@@ -443,7 +443,7 @@ PR05("-------OTA-------\n");
 #if defined(ESP32_2) && !defined(KEY_OVERRIDE_V1) || defined(ESP32_12)
     } else if (key == KEY_14) {
 #if DEBUG > 5
-        PR05("-------DOOR-------\n");
+        PR05("-------1/2-------\n");
 #endif
         _u32 last;
 #if defined(KEY_OVERRIDE_V2)
@@ -473,9 +473,9 @@ PR05("-------OTA-------\n");
     }
 // -----------------------------------------------------
 #if DEBUG > 5
-    PR05("-------SMARTPH-------\n");
+    PR05("-------1/1 or 2/2-------\n");
 #endif
-#if defined(KEY_OVERRIDE_V1) && !defined(KEY_OVERRIDE_V2)
+#if defined(KEY_OVERRIDE_V1) && !defined(KEY_OVERRIDE_V2) || defined(ESP32_10)
     if (ur_connect(ROTA2G_SSID, 0)) {
         PR05("could not connect to %s\n", GET_SSID(ROTA2G_SSID));
 #else
