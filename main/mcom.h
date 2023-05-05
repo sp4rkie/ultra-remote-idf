@@ -360,6 +360,62 @@ TP05
 #endif
 /* ---^^^--- debug ---^^^--- */
 
+
+/* ---vvv--- monitor battery voltage ---vvv--- */
+#if defined(VBAT_ADC1_GND_PIN)
+
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+
+// values derived from ESP32_2:
+
+//raw: 4047 mV: 1035 ADC_ATTEN_DB_0
+//raw: 4086 mV: 1374 ADC_ATTEN_DB_2_5
+//raw: 4074 mV: 1884 ADC_ATTEN_DB_6
+//raw: 4073 mV: 3127 ADC_ATTEN_DB_11
+#define VBAT_ADC1_ATTEN_DB ADC_ATTEN_DB_6   // use this for 1:1 resistor divider over VBAT (approx. 3V)
+
+adc_oneshot_unit_handle_t adc1_unit_ptr;
+adc_cali_handle_t adc1_cali_ptr;
+
+void
+vbat_monitor_init()
+{
+TP05
+    static gpio_config_t io_conf = {};
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = 1ULL << VBAT_ADC1_GND_PIN;
+    gpio_config(&io_conf);
+    gpio_set_level(VBAT_ADC1_GND_PIN, 0);   // ground the voltage divider
+    static adc_oneshot_unit_init_cfg_t adc1_init_cfg = {
+        .unit_id = ADC_UNIT_1,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&adc1_init_cfg, &adc1_unit_ptr));
+    static adc_oneshot_chan_cfg_t adc1_chan_cfg = {
+        .atten = VBAT_ADC1_ATTEN_DB,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_unit_ptr, VBAT_ADC1_SENSE_PIN, &adc1_chan_cfg));
+    static adc_cali_line_fitting_config_t adc1_cali_config = {
+        .unit_id = ADC_UNIT_1,
+        .atten = VBAT_ADC1_ATTEN_DB,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&adc1_cali_config, &adc1_cali_ptr));
+}
+
+void
+vbat_monitor_deinit()
+{
+TP05
+    ESP_ERROR_CHECK(adc_cali_delete_scheme_line_fitting(adc1_cali_ptr));
+    ESP_ERROR_CHECK(adc_oneshot_del_unit(adc1_unit_ptr));
+}
+#endif
+/* ---^^^--- monitor battery voltage ---^^^--- */
+
+
 /* ---vvv--- acoustic feedback ---vvv--- */
 #define     BEEP_2540   2540
 #define     BEEP_1300   1300
@@ -1081,8 +1137,6 @@ _i32
 init_2nd()
 {
 TP05
-    _i32 err;
-
 #if DEBUG > 5
     PR05("bootCount: %d\n", bootCount);
     print_reset_reason(0);
@@ -1091,6 +1145,7 @@ TP05
     //WiFi.onEvent(WiFiEvent);
 #endif
 #if defined(TARGET_PORT)
+    _i32 err;
     if (_w2(err = regcomp(&_regex, STATUS_MATCH, REG_EXTENDED))) {
         regerror(err, &_regex, _buf, _SZ(_buf));
         PR05("%s\n", _buf);
@@ -1099,6 +1154,9 @@ TP05
 #if defined(BUZZER)
     beep_init();
 #endif
+#if defined(VBAT_ADC1_GND_PIN)
+    vbat_monitor_init();
+#endif
     return 0;
 }
 
@@ -1106,6 +1164,9 @@ _i32
 deinit()
 {
 TP05
+#if defined(VBAT_ADC1_GND_PIN)
+    vbat_monitor_deinit();
+#endif
 #if defined(BUZZER)
     beep_deinit();
 #endif
