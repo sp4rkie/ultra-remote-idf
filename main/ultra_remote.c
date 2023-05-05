@@ -28,7 +28,7 @@
 #if defined(ESP32_2)            // --- development device ---
 #   define DEBUG                 0
 #   define BUZZER               23
-#   define VBAT_ADC1_GND_PIN    27              // use a dynamic ground to effectively void it's deep sleep current
+#   define VBAT_ADC1_GND_PIN    27              // use a dynamic ground to effectively void its deep sleep current
 #   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4   // IO32
 
 #if 1
@@ -83,7 +83,7 @@
 //#   define VBAT_ADC1_GND_PIN    27
 //#   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4
 
-#define FIRST_SSID          DOOR_SSID
+#define FIRST_SSID          ROTA2G_SSID
 #define FIRST_TARGET_HOST   DOOR_TARGET_HOST
 #define FIRST_TARGET_PORT   DOOR_TARGET_PORT
 #define FIRST_CMD_ASSERT    DOOR_CMD_OPL
@@ -378,7 +378,7 @@ TP05
     _keys = _keys << 1 | gpio_get_level(KEY_SNS_2);
     _keys = _keys << 1 | gpio_get_level(KEY_SNS_1);
     _keys = _keys << 1 | gpio_get_level(KEY_SNS_0);
-    return _keys;
+    return _keys ? KEY_CODE_14 : KEY_CODE_NONE;
 }
 
 #elif defined(ESP32_12)                     // --- 14 button remote control ---
