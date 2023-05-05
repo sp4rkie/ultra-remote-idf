@@ -193,7 +193,7 @@ TP05
 
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pin_bit_mask = 1ULL << KEY_SNS;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;  // experimental: use the builtin pull as it appears to have no impact on deep sleep current
     gpio_config(&io_conf);
 }
 
