@@ -57,7 +57,7 @@
 
 /* ---vvv--- debug ---vvv--- */
 // 
-// uint64_t        esp_sleep_get_gpio_wakeup_status(void);  // only esp32c3 defines this?!?
+// uint64_t        esp_sleep_get_gpio_wakeup_status(void);  // available on esp32c3 only?!?
 // uint64_t        esp_sleep_get_ext1_wakeup_status(void);
 // touch_pad_t     esp_sleep_get_touchpad_wakeup_status(void);
 // esp_sleep_wakeup_cause_t 
@@ -417,12 +417,14 @@ TP05
 
 
 /* ---vvv--- acoustic feedback ---vvv--- */
+#define     BEEP_3000   3000
 #define     BEEP_2540   2540
 #define     BEEP_1300   1300
 #define     BEEP_1000   1000
 #define     BEEP_OK     BEEP_2540
 #define     BEEP_ERR    BEEP_1000
 #define     BEEP_INFO   BEEP_1300
+#define     BEEP_OTA    BEEP_3000
 
 #ifdef BUZZER
 
