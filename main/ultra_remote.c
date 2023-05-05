@@ -26,13 +26,13 @@
 #include "driver/gptimer.h"
 
 #if defined(ESP32_2)            // --- development device ---
-#   define DEBUG                10
+#   define DEBUG                 0
 #   define BUZZER               23
-#   define VBAT_ADC1_GND_PIN    27
-#   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4
+#   define VBAT_ADC1_GND_PIN    27              // use a dynamic ground to effectively void it's deep sleep current
+#   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4   // IO32
 
-#if 0
 #if 1
+#if 0
 #define FIRST_SSID          DOOR_SSID
 #else
 #define FIRST_SSID          ROTA2G_SSID
@@ -44,7 +44,7 @@
 #endif
 
 #if 1
-#if 0
+#if 1
 #define SECND_SSID          SMART_SSID
 #define SECND_TARGET_HOST   SMART_TARGET_HOST
 #define SECND_TARGET_PORT   SMART_TARGET_PORT
@@ -61,7 +61,7 @@
 //#   define VBAT_ADC1_GND_PIN    27
 //#   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4
 
-#define FIRST_SSID          DOOR_SSID
+#define FIRST_SSID          ROTA2G_SSID
 #define FIRST_TARGET_HOST   DOOR_TARGET_HOST
 #define FIRST_TARGET_PORT   DOOR_TARGET_PORT
 #define FIRST_CMD_ASSERT    DOOR_CMD_OPL
@@ -146,8 +146,8 @@ TP05
         cmd = _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^");
 #elif SECND_SSID == SMART_SSID
 //      cmd = _w1("bz"); 
-//      cmd = _w1("zp");
-        cmd = SMART_CMD_TETHER_OFF_DEL;
+        cmd = _w1("zp");
+//      cmd = SMART_CMD_TETHER_OFF_DEL;
 #endif
     } else {
         PR05("illeg key: %02x\n", key);
@@ -201,7 +201,7 @@ _u8
 scan_keys()
 {
 TP05
-    return gpio_get_level(KEY_SNS) ? KEY_CODE_14 : KEY_CODE_NONE;
+    return !gpio_get_level(KEY_SNS) ? KEY_CODE_14 : KEY_CODE_NONE;  // low if key pressed
 }
 
 #elif defined(ESP32_10)                     // --- 16 button remote control ---
@@ -210,7 +210,7 @@ TP05
 // when the corresponding key is depressed.
 // causing a 'high' level being detected to wakeup.
 // after this the matrix is scanned.
-// can optionally use RTC capable terminals (but with no benefit)
+// feeders can optionally use RTC capable terminals (but with no benefit)
 
 // hot (feeding) keys pulled up by external 51k 
 #define KEY_HOT_0 33
@@ -230,14 +230,14 @@ TP05
                       1 << KEY_SNS_2 | \
                       1 << KEY_SNS_3)
 /*
-00 10
-01 11
-02 12
-03 13
-20 30
-21 31
-22 32
-23 33
+00 10    KEY_CODE_11 KEY_CODE_01       "zp ^"                  "zm ^"
+01 11    KEY_CODE_12 KEY_CODE_02       "@vol=5%- ^roja ^"      "@vol=5%+ ^roja ^"
+02 12    KEY_CODE_13 KEY_CODE_03       "zb ^"                  "zn ^"
+03 13 => KEY_CODE_14 KEY_CODE_04       "zc ^"                  "zx ^"
+20 30    KEY_CODE_15 KEY_CODE_05       "zt ^"                  "zr ^"
+21 31    KEY_CODE_16 KEY_CODE_06       "cq ^"                  "zv ^"
+22 32    KEY_CODE_17 KEY_CODE_07       "cu ^"                  "@vol=60% ^roja ^"
+23 33    KEY_CODE_18 KEY_CODE_08       "cy ^"                  "xc ^"
 */
 #define KEY_CODE_01 0x10
 #define KEY_CODE_02 0x11
@@ -558,10 +558,6 @@ TP05
 }
 /* ---^^^--- KEY section ---^^^--- */
 
-/* ---vvv--- battery voltage section ---vvv--- */
-
-/* ---^^^--- battery voltage section ---^^^--- */
-
 void
 app_main()
 {
@@ -582,24 +578,31 @@ TP05
 #if DEBUG
     _i32 mV;
     ESP_ERROR_CHECK(adc_oneshot_get_calibrated_result(adc1_unit_ptr, adc1_cali_ptr, VBAT_ADC1_SENSE_PIN, &mV));
-    PR05("mV: %d\n", mV);
+    PR05("VBat: %dmV\n", mV);
 #endif
 #endif
 // -----------------------------------------------------
     if (key == KEY_CODE_NONE) {
-        goto out2;
+        goto out1;
 // -----------------------------------------------------
     } else if (bootCount == 1) {
 PR05("-------OTA-------\n");
         if (ur_connect(OTA_SSID, 1)) {
             PR05("could not connect to %s\n", GET_SSID(OTA_SSID));
-            goto out2;
+            goto out1;
         }
         esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
+        beep(BEEP_OTA, 5);
+        beep_sync();            // to stay on the safe side sync queues before entering OTA
         if (!esp_https_ota(&ota_config)) {
+            PR05("OTA completed\n");
+            beep(BEEP_OK, 1);
+            beep_sync();
             esp_restart();
         } else {
+            ESP_ERROR_CHECK(ur_disconnect());
             PR05("could not OTA\n");
+            beep(BEEP_ERR, 3);
             goto out1;             
         }
 // -----------------------------------------------------
@@ -612,19 +615,22 @@ PR05("-------OTA-------\n");
 
         if (ur_connect(FIRST_SSID, 0)) {
             PR05("could not connect to %s\n", GET_SSID(FIRST_SSID));
-            goto out2;
+            goto out1;
         }
         esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
         if (mysend(FIRST_CMD_ASSERT, FIRST_TARGET_HOST, FIRST_TARGET_PORT, 0)) {
             PR05("could not assert signal\n");
+            ESP_ERROR_CHECK(ur_disconnect());
             goto out1;
         }
         last = wait_for_key_release();
         if (mysend(FIRST_CMD_DEASSERT, FIRST_TARGET_HOST, FIRST_TARGET_PORT, 0)) {
             PR05("could not deassert signal\n");
+            ESP_ERROR_CHECK(ur_disconnect());
             goto out1;
         }
         if (last <= 4) {
+            ESP_ERROR_CHECK(ur_disconnect());
             goto out1; // switch tether off only for DOOR SIGNAL exceeding a minimum time interval 
         }
         ESP_ERROR_CHECK(ur_disconnect());
@@ -637,15 +643,14 @@ PR05("-------OTA-------\n");
 #endif
     if (ur_connect(SECND_SSID, 0)) {
         PR05("could not connect to %s\n", GET_SSID(SECND_SSID));
-        goto out2;
+        goto out1;
     }
     esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
     exec_cmd(key);
+    ESP_ERROR_CHECK(ur_disconnect());
 // -----------------------------------------------------
 #endif
 out1:
-    ESP_ERROR_CHECK(ur_disconnect());
-out2:
     wait_for_key_release(); // avoid looping through deep sleep
     beep_sync();  // wait for all queued tones to be processed 
 #if defined(ESP32_9)            // --- 1 button remote control ---
