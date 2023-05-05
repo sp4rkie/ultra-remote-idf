@@ -40,6 +40,7 @@ features
 
 - very fast (see project status)
 - very small (see [profile picture](https://avatars.githubusercontent.com/u/3232165?v=4))
+- low deep sleep current of about 5uA (measured 0.5V over 100k shunt)
 - easy to build (documentation will follow)
 - battery operated (CR123 A 3V)
 - OTAable (press key before inserting the battery)
