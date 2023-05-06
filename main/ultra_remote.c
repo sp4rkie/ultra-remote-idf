@@ -26,12 +26,12 @@
 #include "driver/gptimer.h"
 
 #if defined(ESP32_2)            // --- development device ---
-#   define DEBUG                 0
+#   define DEBUG                 1
 #   define BUZZER               23
 #   define VBAT_ADC1_GND_PIN    27              // use a dynamic ground to effectively void its deep sleep current
 #   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4   // IO32
 
-#if 1
+#if 0
 #if 0
 #define FIRST_SSID          DOOR_SSID
 #else
@@ -44,7 +44,7 @@
 #endif
 
 #if 1
-#if 1
+#if 0
 #define SECND_SSID          SMART_SSID
 #define SECND_TARGET_HOST   SMART_TARGET_HOST
 #define SECND_TARGET_PORT   SMART_TARGET_PORT
