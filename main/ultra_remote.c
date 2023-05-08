@@ -132,32 +132,29 @@
 // must be connected to RTC capable terminals to allow ESP_EXT1_WAKEUP_ANY_HIGH
 #define KEY_SNS 2
 #define KEY_SNS_MASK (1 << KEY_SNS)
-#define KEY_CODE_14 0x03
+
+#if defined(FIRST_TARGET_HOST)
+#define KEY_RAW_FIRST_CMD 0
+#endif
 
 #if defined(SECND_TARGET_HOST)
-void
-exec_cmd(_u8 key)
-{
-TP05
-    _i8p cmd = 0;
 
-    if (key == KEY_CODE_14) { // key may have caused other activities before, but required SSID now already in place
+/*
+scanned key codes to key caps ordering:
+
+00  =>  test
+
+*/
+_i8p
+key_raw2cmd[] = {
 #if SECND_SSID == ROTA2G_SSID
-        cmd = _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^");
+      _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^")
 #elif SECND_SSID == SMART_SSID
-//      cmd = _w1("bz"); 
-        cmd = _w1("zp");
-//      cmd = SMART_CMD_TETHER_OFF_DEL;
+//    _w1("bz")
+    _w1("zp")
+//    SMART_CMD_TETHER_OFF_DEL
 #endif
-    } else {
-        PR05("illeg key: %02x\n", key);
-    }
-    if (cmd) {
-        if (mysend(cmd, SECND_TARGET_HOST, SECND_TARGET_PORT, 0)) {
-            PR05("cmd failed\n");
-        }
-    }
-}
+};
 #endif
 
 void
@@ -175,7 +172,9 @@ _u8
 scan_keys()
 {
 TP05
-    return gpio_get_level(KEY_SNS) ? KEY_CODE_14 : KEY_CODE_NONE; // high if pressed
+    _u8 ret = gpio_get_level(KEY_SNS);  // high if pressed
+
+    return ret ? !ret : KEY_CODE_NONE;
 }
 
 #elif defined(ESP32_9)                      // --- 1 button remote control ---
@@ -183,7 +182,25 @@ TP05
 // single sense key with internal pullup in use
 // must be connected to a RTC capable terminal to allow use of esp_sleep_enable_ext0_wakeup() 
 #define KEY_SNS 4
-#define KEY_CODE_14 0x03
+
+#if defined(FIRST_TARGET_HOST)
+#define KEY_RAW_FIRST_CMD 0
+#endif
+
+#if defined(SECND_TARGET_HOST)
+
+#does not apply ATM
+
+/*
+scanned key codes to key caps ordering:
+
+00  =>  fct
+
+*/
+_i8p
+key_raw2cmd[] = {
+};
+#endif
 
 void
 init_keys()
@@ -201,7 +218,9 @@ _u8
 scan_keys()
 {
 TP05
-    return !gpio_get_level(KEY_SNS) ? KEY_CODE_14 : KEY_CODE_NONE;  // low if key pressed
+    _u8 ret = !gpio_get_level(KEY_SNS);  // low if key pressed
+
+    return ret ? !ret : KEY_CODE_NONE;
 }
 
 #elif defined(ESP32_10)                     // --- 16 button remote control ---
@@ -229,84 +248,48 @@ TP05
                       1 << KEY_SNS_1 | \
                       1 << KEY_SNS_2 | \
                       1 << KEY_SNS_3)
-/*
-00 10    KEY_CODE_11 KEY_CODE_01       "zp ^"                  "zm ^"
-01 11    KEY_CODE_12 KEY_CODE_02       "@vol=5%- ^roja ^"      "@vol=5%+ ^roja ^"
-02 12    KEY_CODE_13 KEY_CODE_03       "zb ^"                  "zn ^"
-03 13 => KEY_CODE_14 KEY_CODE_04       "zc ^"                  "zx ^"
-20 30    KEY_CODE_15 KEY_CODE_05       "zt ^"                  "zr ^"
-21 31    KEY_CODE_16 KEY_CODE_06       "cq ^"                  "zv ^"
-22 32    KEY_CODE_17 KEY_CODE_07       "cu ^"                  "@vol=60% ^roja ^"
-23 33    KEY_CODE_18 KEY_CODE_08       "cy ^"                  "xc ^"
-*/
-#define KEY_CODE_01 0x10
-#define KEY_CODE_02 0x11
-#define KEY_CODE_03 0x12
-#define KEY_CODE_04 0x13
-#define KEY_CODE_05 0x30
-#define KEY_CODE_06 0x31
-#define KEY_CODE_07 0x32
-#define KEY_CODE_08 0x33
-#define KEY_CODE_11 0x00
-#define KEY_CODE_12 0x01
-#define KEY_CODE_13 0x02
-#define KEY_CODE_14 0x03
-#define KEY_CODE_15 0x20
-#define KEY_CODE_16 0x21
-#define KEY_CODE_17 0x22
-#define KEY_CODE_18 0x23
+
+#if defined(FIRST_TARGET_HOST)
+#does not apply
+#endif
 
 #if defined(SECND_TARGET_HOST)
-void
-exec_cmd(_u8 key)
-{
-TP05
-    _i8p cmd = 0;
 
-    if (key == KEY_CODE_11) {
-        cmd = _w1("zp ^");
-    } else if (key == KEY_CODE_01) {
-        cmd = _w1("zm ^");
-    } else if (key == KEY_CODE_12) {
-//        cmd = _w1("zh ^");
-        cmd = _w1("@vol=5%- ^roja ^");
-    } else if (key == KEY_CODE_02) {
-//        cmd = _w1("zk ^");
-        cmd = _w1("@vol=5%+ ^roja ^");
-    } else if (key == KEY_CODE_13) {
-        cmd = _w1("zb ^");
-    } else if (key == KEY_CODE_03) {
-        cmd = _w1("zn ^");
-    } else if (key == KEY_CODE_14) {
-        cmd = _w1("zc ^");
-    } else if (key == KEY_CODE_04) {
-        cmd = _w1("zx ^");
-    } else if (key == KEY_CODE_15) {
-        cmd = _w1("zt ^");
-    } else if (key == KEY_CODE_05) {
-        cmd = _w1("zr ^");
-    } else if (key == KEY_CODE_16) {
-        cmd = _w1("cq ^");
-    } else if (key == KEY_CODE_06) {
-        cmd = _w1("zv ^");
-    } else if (key == KEY_CODE_17) {
-        cmd = _w1("cu ^");
-    } else if (key == KEY_CODE_07) {
-//        cmd = _w1("zj ^");
-        cmd = _w1("@vol=60% ^roja ^");
-    } else if (key == KEY_CODE_18) {
-        cmd = _w1("cy ^");
-    } else if (key == KEY_CODE_08) {
-        cmd = _w1("xc ^");
-    } else {
-        PR05("illeg key: %02x\n", key);
-    }
-    if (cmd) {
-        if (mysend(cmd, SECND_TARGET_HOST, SECND_TARGET_PORT, 0)) {
-            PR05("cmd failed\n");
-        }
-    }
-}
+/*
+scanned key codes to key caps ordering:
+
+00 10      pause            media
+01 11      vol-             vol+
+02 12      backw            forw
+03 13  =>  unfav            fav
+20 30      undel            del
+21 31      all light off    repeat
+22 32      ev light bd_b4   vol mid
+23 33      ev light dim_b3  amps audio
+
+*/
+_i8p
+key_raw2cmd[] = {
+    _w1("zp ^"),                // 0 << 2 | 0   00
+    _w1("@vol=5%- ^roja ^"),    // 0 << 2 | 1   01
+    _w1("zb ^"),                // 0 << 2 | 2   02
+    _w1("zc ^"),                // 0 << 2 | 3   03
+
+    _w1("zm ^"),                // 1 << 2 | 0   04
+    _w1("@vol=5%+ ^roja ^"),    // 1 << 2 | 1   05
+    _w1("zn ^"),                // 1 << 2 | 2   06
+    _w1("zx ^"),                // 1 << 2 | 3   07
+
+    _w1("zt ^"),                // 2 << 2 | 0   08
+    _w1("cq ^"),                // 2 << 2 | 1   09
+    _w1("cu ^"),                // 2 << 2 | 2   10
+    _w1("cy ^"),                // 2 << 2 | 3   11
+
+    _w1("zr ^"),                // 3 << 2 | 0   12
+    _w1("zv ^"),                // 3 << 2 | 1   13
+    _w1("@vol=60% ^roja ^"),    // 3 << 2 | 2   14
+    _w1("xc ^"),                // 3 << 2 | 3   15
+};
 #endif
 
 #elif defined(ESP32_11)                     // --- 4 button remote control ---
@@ -323,35 +306,39 @@ TP05
                       1 << KEY_SNS_2 | \
                       1 << KEY_SNS_3)
 
-#define KEY_CODE_14 0x03
+#if defined(FIRST_TARGET_HOST)
+#define KEY_RAW_FIRST_CMD 0
+#endif
 
-#ifdef __NOT_IN_USE__
-_u8p cmds[] = {
-    "",             // 00 . . . .   n/a
-    "zp",           // 01 . . . 1 
-    "zh",           // 02 . . 1 . 
-    "ae ^dim ^",    // 03 . . 1 1 
-    "zk",           // 04 . 1 . . 
-    "ae ^dim ^",    // 05 . 1 . 1 
-    "ae ^dim ^",    // 06 . 1 1 . 
-    "ae ^dim ^",    // 07 . 1 1 1 
-    "zm",           // 08 1 . . . 
-    "ae ^dim ^",    // 09 1 . . 1 
-    "ae ^dim ^",    // 10 1 . 1 . 
-    "ae ^dim ^",    // 11 1 . 1 1 
-    "ae ^dim ^",    // 12 1 1 . . 
-    "ae ^dim ^",    // 13 1 1 . 1 
-    "ae ^dim ^",    // 14 1 1 1 . 
-    "ae ^dim ^",    // 15 1 1 1 1 
+#if defined(SECND_TARGET_HOST)
+
+#does not apply ATM
+
+/*
+scanned key codes to key caps ordering:
+
+00  =>  fct
+
+*/
+_i8p
+key_raw2cmd[] = {
+    "",             // . . . .    00
+    "zp",           // . . . 1    01
+    "zh",           // . . 1 .    02
+    "ae ^dim ^",    // . . 1 1    03
+    "zk",           // . 1 . .    04
+    "ae ^dim ^",    // . 1 . 1    05
+    "ae ^dim ^",    // . 1 1 .    06
+    "ae ^dim ^",    // . 1 1 1    07
+    "zm",           // 1 . . .    08
+    "ae ^dim ^",    // 1 . . 1    09
+    "ae ^dim ^",    // 1 . 1 .    10
+    "ae ^dim ^",    // 1 . 1 1    11
+    "ae ^dim ^",    // 1 1 . .    12
+    "ae ^dim ^",    // 1 1 . 1    13
+    "ae ^dim ^",    // 1 1 1 .    14
+    "ae ^dim ^",    // 1 1 1 1    15
 };
-
-_i32
-exec_cmd(_u8 keys)
-{
-TP05
-if (DEBUG > 5) Serial.printf("exec cmd: 0x%x -> %s\n", keys, cmds[keys]);
-    return mysend(cmds[keys], TARGET_HOST, TARGET_PORT, 0);
-}
 #endif
 
 void
@@ -372,13 +359,15 @@ _u8
 scan_keys()
 {
 TP05
-    _u8 _keys = 0;
+    _u8 ret = 0;
 
-    _keys = _keys << 1 | gpio_get_level(KEY_SNS_3);
-    _keys = _keys << 1 | gpio_get_level(KEY_SNS_2);
-    _keys = _keys << 1 | gpio_get_level(KEY_SNS_1);
-    _keys = _keys << 1 | gpio_get_level(KEY_SNS_0);
-    return _keys ? KEY_CODE_14 : KEY_CODE_NONE;
+    ret = ret << 1 | gpio_get_level(KEY_SNS_3);
+    ret = ret << 1 | gpio_get_level(KEY_SNS_2);
+    ret = ret << 1 | gpio_get_level(KEY_SNS_1);
+    ret = ret << 1 | gpio_get_level(KEY_SNS_0);
+
+//  return ret ? ret : KEY_CODE_NONE;
+    return ret ? !ret : KEY_CODE_NONE; // map all keys to one ATM
 }
 
 #elif defined(ESP32_12)                     // --- 14 button remote control ---
@@ -400,84 +389,52 @@ TP05
                       1 << KEY_SNS_1 | \
                       1 << KEY_SNS_2 | \
                       1 << KEY_SNS_3)
-/*
-scanned key codes to key caps ordering (hex):
 
- 0  1      KEY_CODE_01 KEY_CODE_02     pause media
-10 11      KEY_CODE_03 KEY_CODE_04     vol-  vol+
-20 21      KEY_CODE_05 KEY_CODE_06     backw forw
-30 31  =>  KEY_CODE_07 KEY_CODE_08     unfav fav
- 2  3      KEY_CODE_09 KEY_CODE_10     undel del          
-12 13      KEY_CODE_11 KEY_CODE_12     mute nvol      
-22 23      KEY_CODE_13 KEY_CODE_14     rpt  opul
-*/
-
-#define KEY_CODE_01 0x00
-#define KEY_CODE_02 0x01
-#define KEY_CODE_03 0x10
-#define KEY_CODE_04 0x11
-#define KEY_CODE_05 0x20
-#define KEY_CODE_06 0x21
-#define KEY_CODE_07 0x30
-#define KEY_CODE_08 0x31
-#define KEY_CODE_09 0x02
-#define KEY_CODE_10 0x03
-#define KEY_CODE_11 0x12
-#define KEY_CODE_12 0x13
-#define KEY_CODE_13 0x22
-#define KEY_CODE_14 0x23
+#if defined(FIRST_TARGET_HOST)
+#define KEY_RAW_FIRST_CMD (2 << 2 | 3) // 11
+#endif
 
 #if defined(SECND_TARGET_HOST)
-void
-exec_cmd(_u8 key)
-{
-TP05
-    _i8p cmd = 0;
 
-    if (key == KEY_CODE_01) {
-        cmd = _w1("zp");
-    } else if (key == KEY_CODE_02) {
-        cmd = _w1("zm");
-    } else if (key == KEY_CODE_03) {
-        cmd = _w1("zh");
-    } else if (key == KEY_CODE_04) {
-        cmd = _w1("zk");
-    } else if (key == KEY_CODE_05) {
-        cmd = _w1("zb");
-    } else if (key == KEY_CODE_06) {
-        cmd = _w1("zn");
-    } else if (key == KEY_CODE_07) {
-        cmd = _w1("zc");
-    } else if (key == KEY_CODE_08) {
-        cmd = _w1("zx");
-    } else if (key == KEY_CODE_09) {
-        cmd = _w1("zt");
-    } else if (key == KEY_CODE_10) {
-        cmd = _w1("zr");
-    } else if (key == KEY_CODE_11) {
-        cmd = _w1("zl");
-    } else if (key == KEY_CODE_12) {
-        cmd = _w1("zj");
-    } else if (key == KEY_CODE_13) {
-        cmd = _w1("zv");
-    } else if (key == KEY_CODE_14) { // key may have caused other activities before, but required SSID now already in place
-        cmd = SMART_CMD_TETHER_OFF_DEL;
-    } else {
-        PR05("illeg key: %02x\n", key);
-    }
-    if (cmd) {
-        if (mysend(cmd, SECND_TARGET_HOST, SECND_TARGET_PORT, 0)) {
-            PR05("cmd failed\n");
-        }
-    }
-}
+/*
+scanned key codes to key caps ordering:
+
+00 01      pause media      
+10 11      vol-  vol+        
+20 21      backw forw                            
+30 31  =>  unfav fav   
+02 03      undel del                                      
+12 13      mute  nvol                                  
+22 23      rpt   opul                            
+
+*/
+_i8p
+key_raw2cmd[] = {
+    _w1("zp"),                  // 0 << 2 | 0   00
+    _w1("zm"),                  // 0 << 2 | 1   01
+    _w1("zt"),                  // 0 << 2 | 2   02
+    _w1("zr"),                  // 0 << 2 | 3   03
+
+    _w1("zh"),                  // 1 << 2 | 0   04
+    _w1("zk"),                  // 1 << 2 | 1   05
+    _w1("zl"),                  // 1 << 2 | 2   06
+    _w1("zj"),                  // 1 << 2 | 3   07
+
+    _w1("zb"),                  // 2 << 2 | 0   08
+    _w1("zn"),                  // 2 << 2 | 1   09
+    _w1("zv"),                  // 2 << 2 | 2   10
+    SMART_CMD_TETHER_OFF_DEL,   // 2 << 2 | 3   11
+
+    _w1("zc"),                  // 3 << 2 | 0   12
+    _w1("zx"),                  // 3 << 2 | 1   13
+};
 #endif
 
 #endif
 
 // these are handled the same
 #if defined(ESP32_10) || \
-      defined(ESP32_12)             // --- 16 button remote control ---
+    defined(ESP32_12)               // --- 16 button remote control ---
                                     // --- 14 button remote control ---
 _u8 key_sns[] = {   // cols
     KEY_SNS_0,
@@ -527,7 +484,7 @@ TP05
         }
         for (s = 0; s < _NE(key_sns); ++s) {
             if (gpio_get_level(key_sns[s])) {
-                key = h << 4 | s;
+                key = h << 2 | s;
                 goto end;
             }
         }
@@ -606,8 +563,8 @@ PR05("-------OTA-------\n");
             goto out1;             
         }
 // -----------------------------------------------------
-#if defined(FIRST_SSID)
-    } else if (key == KEY_CODE_14) {
+#if defined(FIRST_TARGET_HOST)
+    } else if (key == KEY_RAW_FIRST_CMD) {
 #if DEBUG > 5
         PR05("-------FIRST-------\n");
 #endif
@@ -637,7 +594,7 @@ PR05("-------OTA-------\n");
 #endif
     }
 // -----------------------------------------------------
-#if defined(SECND_SSID)
+#if defined(SECND_TARGET_HOST)
 #if DEBUG > 5
     PR05("-------SECND-------\n");
 #endif
@@ -646,7 +603,7 @@ PR05("-------OTA-------\n");
         goto out1;
     }
     esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
-    exec_cmd(key);
+    mysend(key_raw2cmd[key], SECND_TARGET_HOST, SECND_TARGET_PORT, 0);
     ESP_ERROR_CHECK(ur_disconnect());
 // -----------------------------------------------------
 #endif
