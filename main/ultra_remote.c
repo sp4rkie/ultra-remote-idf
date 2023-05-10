@@ -79,7 +79,7 @@
 
 #elif defined(ESP32_11)         // --- 4 button remote control ---
 #   define DEBUG                 0
-//#   define BUZZER                2
+#   define BUZZER                4
 //#   define VBAT_ADC1_GND_PIN    27
 //#   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4
 
@@ -505,7 +505,7 @@ TP05
 #if DEBUG > 5
         PR05("key: 0x%x\n", key);
 #endif
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(100));
         ++cnt;
     }
 #if DEBUG > 1
@@ -548,7 +548,7 @@ PR05("-------OTA-------\n");
             PR05("could not connect to %s\n", GET_SSID(OTA_SSID));
             goto out1;
         }
-        esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
+        ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));              // <== (RE)CHECK THIS
         beep(BEEP_OTA, 5);
         beep_sync();            // to stay on the safe side sync queues before entering OTA
         if (!esp_https_ota(&ota_config)) {
@@ -574,7 +574,7 @@ PR05("-------OTA-------\n");
             PR05("could not connect to %s\n", GET_SSID(FIRST_SSID));
             goto out1;
         }
-        esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
+        ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));              // <== (RE)CHECK THIS
         if (mysend(FIRST_CMD_ASSERT, FIRST_TARGET_HOST, FIRST_TARGET_PORT, 0)) {
             PR05("could not assert signal\n");
             ESP_ERROR_CHECK(ur_disconnect());
@@ -602,7 +602,7 @@ PR05("-------OTA-------\n");
         PR05("could not connect to %s\n", GET_SSID(SECND_SSID));
         goto out1;
     }
-    esp_wifi_set_ps(WIFI_PS_NONE);              // <== (RE)CHECK THIS
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));              // <== (RE)CHECK THIS
     mysend(key_raw2cmd[key], SECND_TARGET_HOST, SECND_TARGET_PORT, 0);
     ESP_ERROR_CHECK(ur_disconnect());
 // -----------------------------------------------------
