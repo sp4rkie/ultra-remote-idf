@@ -55,6 +55,9 @@
 
 #endif
 
+//#define WIFI_RESTORE
+//#define DUMP_SOME
+
 /* ---vvv--- debug ---vvv--- */
 // 
 // uint64_t        esp_sleep_get_gpio_wakeup_status(void);  // available on esp32c3 only?!?
@@ -535,13 +538,13 @@ TP05
     beep_t b_dummy;
 
     while (xQueuePeek(beep_que, &b_dummy, 0)) {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(10));
 #if DEBUG > 5
 PR05("+");
 #endif
     }
     while (dispatching) {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(10));
 #if DEBUG > 5
 PR05("-");
 #endif
@@ -659,6 +662,7 @@ _i8p accpts[] = {
 
 #define NETIF_DESC_STA "ur"
 
+#ifdef DUMP_SOME
 void
 dump_cfg(const _i8 *str, wifi_init_config_t *cfg)
 {
@@ -698,6 +702,103 @@ TP05
     PR05_("\n");
 }
 
+void
+dump_some()
+{
+    _i8 country[20];
+    ESP_ERROR_CHECK(esp_wifi_get_country_code(country));
+    GS05(country);
+
+    wifi_country_t w_country;
+    ESP_ERROR_CHECK(esp_wifi_get_country(&w_country));
+    GV05(w_country.schan);
+    GV05(w_country.nchan);
+    GV05(w_country.max_tx_power);
+    GV05(w_country.policy);
+
+    int8_t power;
+    ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&power)); //  unit is 0.25dBm
+    GV05(power);
+
+    wifi_mode_t mode;
+    ESP_ERROR_CHECK(esp_wifi_get_mode(&mode));
+    GV05(mode);
+
+    wifi_ap_record_t ap_info;
+    ESP_ERROR_CHECK(esp_wifi_sta_get_ap_info(&ap_info));
+    GV05(ap_info.bssid);
+    GV05(ap_info.ssid);
+    GV05(ap_info.primary);
+    GV05(ap_info.second);
+    GV05(ap_info.rssi);
+    GV05(ap_info.authmode);
+    GV05(ap_info.pairwise_cipher);
+    GV05(ap_info.group_cipher);
+    GV05(ap_info.ant);
+    GV05(ap_info.phy_11b);
+    GV05(ap_info.phy_11g);
+    GV05(ap_info.phy_11n);
+    GV05(ap_info.phy_lr);
+    GV05(ap_info.phy_11ax);
+    GV05(ap_info.wps);
+    GV05(ap_info.ftm_responder);
+    GV05(ap_info.ftm_initiator);
+    GV05(ap_info.reserved);
+//    GV05(ap_info.country);
+    GV05(ap_info.he_ap.bss_color);
+    GV05(ap_info.he_ap.partial_bss_color);
+    GV05(ap_info.he_ap.bss_color_disabled);
+    GV05(ap_info.he_ap.bssid_index);
+
+    wifi_ps_type_t type;
+    ESP_ERROR_CHECK(esp_wifi_get_ps(&type));
+    GV05(type);
+    GV05(WIFI_PS_NONE);
+
+    wifi_bandwidth_t bw;
+    ESP_ERROR_CHECK(esp_wifi_get_bandwidth(WIFI_IF_STA, &bw));
+    GV05(bw);
+
+    wifi_config_t conf;
+    ESP_ERROR_CHECK(esp_wifi_get_config(WIFI_IF_STA, &conf));
+    GS05(conf.sta.ssid);
+    GS05(conf.sta.password);
+    GV05(conf.sta.scan_method);
+    GV05(conf.sta.bssid_set);
+//    uint8_t bssid[6];
+    GV05(conf.sta.channel);
+    GV05(conf.sta.listen_interval);
+    GV05(conf.sta.sort_method);
+    GV05(conf.sta.threshold.rssi);
+    GV05(conf.sta.threshold.authmode);
+    GV05(conf.sta.pmf_cfg.capable);
+    GV05(conf.sta.pmf_cfg.required);
+    GV05(conf.sta.rm_enabled);
+    GV05(conf.sta.btm_enabled);
+    GV05(conf.sta.mbo_enabled);
+    GV05(conf.sta.ft_enabled);
+    GV05(conf.sta.owe_enabled);
+    GV05(conf.sta.transition_disable);
+    GV05(conf.sta.reserved);
+    GV05(conf.sta.sae_pwe_h2e);
+    GV05(conf.sta.sae_pk_mode);
+    GV05(conf.sta.failure_retry_cnt);
+    GV05(conf.sta.he_dcm_set);
+    GV05(conf.sta.he_dcm_max_constellation_tx);
+    GV05(conf.sta.he_dcm_max_constellation_rx);
+    GV05(conf.sta.he_mcs9_enabled);
+    GV05(conf.sta.he_su_beamformee_disabled);
+    GV05(conf.sta.he_trig_su_bmforming_feedback_disabled);
+    GV05(conf.sta.he_trig_mu_bmforming_partial_feedback_disabled);
+    GV05(conf.sta.he_trig_cqi_feedback_disabled);
+    GV05(conf.sta.he_reserved);
+
+    uint32_t mask;
+    ESP_ERROR_CHECK(esp_wifi_get_event_mask(&mask));    // dflt WIFI_EVENT_MASK_AP_PROBEREQRECVED
+    GV05(mask);
+}
+#endif
+
 bool
 ur_is_our_netif(const _i8 *prefix, esp_netif_t *netif)
 {
@@ -733,7 +834,9 @@ ur_handler_on_sta_got_ip(void *arg, esp_event_base_t event_base,
 TP05
     s_retry_num = 0;
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-//dump_ev("pre", event);
+#ifdef DUMP_SOME
+    dump_ev("pre", event);
+#endif
     if (!ur_is_our_netif(NETIF_DESC_STA, event->esp_netif)) {
         return;
     }
@@ -752,13 +855,32 @@ ur_handler_on_wifi_connect(void *esp_netif, esp_event_base_t event_base,
 TP05
 }
 
+#ifdef WIFI_RESTORE
+RTC_DATA_ATTR _u32 wifi_restored = 0;
+#endif
+
 void
 ur_wifi_start(void)
 {
 TP05
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-//dump_cfg("pre", &cfg);
+#ifdef DUMP_SOME
+    dump_cfg("pre", &cfg);
+#endif
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+#ifdef WIFI_RESTORE
+    if (!wifi_restored) {
+        ESP_ERROR_CHECK(esp_wifi_restore());
+PR05("esp_wifi_restore() called\n");
+
+//        ESP_ERROR_CHECK(esp_wifi_set_country_code("US", 0));
+//PR05("esp_wifi_set_country_code() called\n");
+
+        ++wifi_restored;
+    }
+#endif
+
     esp_netif_inherent_config_t esp_netif_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_STA();
     esp_netif_config.if_desc = NETIF_DESC_STA;
     esp_netif_config.route_prio = 128;
@@ -1045,6 +1167,9 @@ TP05
         PR05("TP03: %lu WiFi %s\n", esp_log_timestamp(), "connected");
 #endif
     }
+#ifdef DUMP_SOME
+    dump_some();
+#endif
     err = getaddrinfo(host, port, &hints, &res);
     if (err || !res) {
         PR05("DNS lookup failed err=%d res=%p\n", err, res);
