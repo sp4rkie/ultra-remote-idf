@@ -57,6 +57,7 @@
 
 //#define WIFI_RESTORE
 //#define DUMP_SOME
+#define DUMP_RSSI
 
 /* ---vvv--- debug ---vvv--- */
 // 
@@ -373,6 +374,9 @@ TP05
 
 // values derived from ESP32_2:
 
+// === Run "adc_info" command ===
+// ADC VRef calibration: 1114mV
+
 //raw: 4047 mV: 1035 ADC_ATTEN_DB_0
 //raw: 4086 mV: 1374 ADC_ATTEN_DB_2_5
 //raw: 4074 mV: 1884 ADC_ATTEN_DB_6
@@ -640,6 +644,9 @@ void beep_deinit() {}
 #define GET_SSID(indx) (accpts[((indx) << 1) + 0])
 #define GET_PASS(indx) (accpts[((indx) << 1) + 1])
 
+#define CC2STR(a) (a)[0], (a)[1], (a)[2]
+#define CCSTR "%c%c%c"
+
 static _i32 s_retry_num = 0;
 static esp_netif_t *s_ur_sta_netif = 0;
 static SemaphoreHandle_t s_semph_get_ip_addrs = 0;
@@ -663,11 +670,12 @@ _i8p accpts[] = {
 #define NETIF_DESC_STA "ur"
 
 #ifdef DUMP_SOME
+
 void
 dump_cfg(const _i8 *str, wifi_init_config_t *cfg)
 {
 TP05
-//    PR05("%s\n", str);
+    PR05("---vvv--- %s ---vvv---\n", str);
     GV05(cfg->static_rx_buf_num);
     GV05(cfg->dynamic_rx_buf_num);
     GV05(cfg->tx_buf_type);
@@ -688,33 +696,62 @@ TP05
     GV05(cfg->sta_disconnected_pm);
     GV05(cfg->espnow_max_encrypt_num);
     GV05(cfg->magic);
-    PR05_("\n");
+    PR05("---^^^--- %s ---^^^---\n", str);
 }
 
 void
 dump_ev(const _i8 *str, ip_event_got_ip_t *ev)
 {
 TP05
-//    PR05("%s\n", str);
+    PR05("---vvv--- %s ---vvv---\n", str);
     PR05("ip:   " IPSTR "\n", IP2STR(&ev->ip_info.ip));
     PR05("mask: " IPSTR "\n", IP2STR(&ev->ip_info.netmask));
     PR05("gw:   " IPSTR "\n", IP2STR(&ev->ip_info.gw));
-    PR05_("\n");
+    PR05("---^^^--- %s ---^^^---\n", str);
 }
 
 void
-dump_some()
+dump_some(const _i8 *str)
 {
+    PR05("---vvv--- %s ---vvv---\n", str);
     _i8 country[20];
     ESP_ERROR_CHECK(esp_wifi_get_country_code(country));
-    GS05(country);
+    PR05("val: country.cc[]: <" CCSTR ">\n", CC2STR(country));
 
     wifi_country_t w_country;
     ESP_ERROR_CHECK(esp_wifi_get_country(&w_country));
+    PR05("val: w_country.cc[]: <" CCSTR ">\n", CC2STR(w_country.cc));
     GV05(w_country.schan);
     GV05(w_country.nchan);
     GV05(w_country.max_tx_power);
     GV05(w_country.policy);
+
+#if 0
+typical values:
+
+w_country.cc[]: <01 >
+val: w_country.schan == 0x1
+val: w_country.nchan == 0xb
+val: w_country.max_tx_power == 0x14
+val: w_country.policy == 0x0
+val: power == 0x4e
+
+country.cc[]: <DE >
+w_country.cc[]: <DE >
+val: w_country.schan == 0x1
+val: w_country.nchan == 0xd
+val: w_country.max_tx_power == 0x14
+val: w_country.policy == 0x0
+val: power == 0x4e
+
+country.cc[]: <US >
+w_country.cc[]: <US >
+val: w_country.schan == 0x1
+val: w_country.nchan == 0xb
+val: w_country.max_tx_power == 0x1e
+val: w_country.policy == 0x0
+val: power == 0x4e
+#endif
 
     int8_t power;
     ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&power)); //  unit is 0.25dBm
@@ -726,8 +763,8 @@ dump_some()
 
     wifi_ap_record_t ap_info;
     ESP_ERROR_CHECK(esp_wifi_sta_get_ap_info(&ap_info));
-    GV05(ap_info.bssid);
-    GV05(ap_info.ssid);
+    PR05("val: ap_info.bssid " MACSTR "\n", MAC2STR(ap_info.bssid));
+    GS05(ap_info.ssid);
     GV05(ap_info.primary);
     GV05(ap_info.second);
     GV05(ap_info.rssi);
@@ -744,7 +781,11 @@ dump_some()
     GV05(ap_info.ftm_responder);
     GV05(ap_info.ftm_initiator);
     GV05(ap_info.reserved);
-//    GV05(ap_info.country);
+    PR05("val: ap_info.country[]: <" CCSTR ">\n", CC2STR(ap_info.country.cc));
+    GV05(ap_info.country.schan);
+    GV05(ap_info.country.nchan);
+    GV05(ap_info.country.max_tx_power);
+    GV05(ap_info.country.policy);
     GV05(ap_info.he_ap.bss_color);
     GV05(ap_info.he_ap.partial_bss_color);
     GV05(ap_info.he_ap.bss_color_disabled);
@@ -765,7 +806,7 @@ dump_some()
     GS05(conf.sta.password);
     GV05(conf.sta.scan_method);
     GV05(conf.sta.bssid_set);
-//    uint8_t bssid[6];
+    PR05("val: conf.sta.bssid " MACSTR "\n", MAC2STR(conf.sta.bssid));
     GV05(conf.sta.channel);
     GV05(conf.sta.listen_interval);
     GV05(conf.sta.sort_method);
@@ -796,6 +837,7 @@ dump_some()
     uint32_t mask;
     ESP_ERROR_CHECK(esp_wifi_get_event_mask(&mask));    // dflt WIFI_EVENT_MASK_AP_PROBEREQRECVED
     GV05(mask);
+    PR05("---^^^--- %s ---^^^---\n", str);
 }
 #endif
 
@@ -835,7 +877,8 @@ TP05
     s_retry_num = 0;
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
 #ifdef DUMP_SOME
-    dump_ev("pre", event);
+    dump_ev(__func__, event);
+    dump_some(__func__);
 #endif
     if (!ur_is_our_netif(NETIF_DESC_STA, event->esp_netif)) {
         return;
@@ -865,17 +908,33 @@ ur_wifi_start(void)
 TP05
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 #ifdef DUMP_SOME
-    dump_cfg("pre", &cfg);
+    dump_cfg(__func__, &cfg);
 #endif
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
 #ifdef WIFI_RESTORE
     if (!wifi_restored) {
+
+#if 1
         ESP_ERROR_CHECK(esp_wifi_restore());
 PR05("esp_wifi_restore() called\n");
+#endif
 
-//        ESP_ERROR_CHECK(esp_wifi_set_country_code("US", 0));
-//PR05("esp_wifi_set_country_code() called\n");
+#if 0
+        ESP_ERROR_CHECK(esp_wifi_set_country_code("US", 0));
+PR05("esp_wifi_set_country_code() called\n");
+#endif
+
+#if 0
+        wifi_country_t country = {
+            .cc = "US ",
+            .schan = 0x1,
+            .nchan = 0xb,
+            .max_tx_power = 0x1e,
+            .policy = WIFI_COUNTRY_POLICY_MANUAL,
+        };
+        ESP_ERROR_CHECK(esp_wifi_set_country(&country));
+#endif
 
         ++wifi_restored;
     }
@@ -1003,6 +1062,7 @@ TP05
         return ESP_FAIL;
     }
     ESP_ERROR_CHECK(esp_register_shutdown_handler(&ur_wifi_shutdown));
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 #if DEBUG
     PR05("TP02: %lu WiFi %s\n", esp_log_timestamp(), wait ? "connected" : "issued");
 #endif
@@ -1165,11 +1225,21 @@ TP05
         }
 #if DEBUG 
         PR05("TP03: %lu WiFi %s\n", esp_log_timestamp(), "connected");
+#ifdef DUMP_RSSI
+        wifi_ap_record_t ap_info;
+        ESP_ERROR_CHECK(esp_wifi_sta_get_ap_info(&ap_info));
+        PR05("RSSI: %d ", ap_info.rssi);
+
+        wifi_country_t w_country;
+        ESP_ERROR_CHECK(esp_wifi_get_country(&w_country));
+        PR05(CCSTR "0x%02x 0x%02x\n",
+            CC2STR(w_country.cc),
+            w_country.max_tx_power,
+            w_country.policy
+        );
+#endif
 #endif
     }
-#ifdef DUMP_SOME
-    dump_some();
-#endif
     err = getaddrinfo(host, port, &hints, &res);
     if (err || !res) {
         PR05("DNS lookup failed err=%d res=%p\n", err, res);
@@ -1196,6 +1266,7 @@ TP05
         stat = 3;
         goto out1;
     }
+    // bail if no status received
     struct timeval receiving_timeout;
     receiving_timeout.tv_sec = 5;
     receiving_timeout.tv_usec = 0;
@@ -1280,6 +1351,9 @@ TP05
 #endif
 #if defined(BUZZER)
     beep_init();
+    if (bootCount == 1) {
+        beep(BEEP_INFO, 2);
+    }
 #endif
 #if defined(VBAT_ADC1_GND_PIN)
     vbat_monitor_init();
