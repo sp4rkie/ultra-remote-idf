@@ -26,7 +26,7 @@
 #include "driver/gptimer.h"
 
 #if defined(ESP32_2)            // --- development device ---
-#   define DEBUG                 1
+#   define DEBUG                 0
 #   define BUZZER               23
 #   define VBAT_ADC1_GND_PIN    27              // use a dynamic ground to effectively void its deep sleep current
 #   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4   // IO32
@@ -548,7 +548,6 @@ PR05("-------OTA-------\n");
             PR05("could not connect to %s\n", GET_SSID(OTA_SSID));
             goto out1;
         }
-        ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));              // <== (RE)CHECK THIS
         beep(BEEP_OTA, 5);
         beep_sync();            // to stay on the safe side sync queues before entering OTA
         if (!esp_https_ota(&ota_config)) {
@@ -566,7 +565,7 @@ PR05("-------OTA-------\n");
 #if defined(FIRST_TARGET_HOST)
     } else if (key == KEY_RAW_FIRST_CMD) {
 #if DEBUG > 5
-        PR05("-------FIRST-------\n");
+        PR05("-------FIRST TARGET-------\n");
 #endif
         _u32 last;
 
@@ -574,7 +573,6 @@ PR05("-------OTA-------\n");
             PR05("could not connect to %s\n", GET_SSID(FIRST_SSID));
             goto out1;
         }
-        ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));              // <== (RE)CHECK THIS
         if (mysend(FIRST_CMD_ASSERT, FIRST_TARGET_HOST, FIRST_TARGET_PORT, 0)) {
             PR05("could not assert signal\n");
             ESP_ERROR_CHECK(ur_disconnect());
@@ -596,14 +594,15 @@ PR05("-------OTA-------\n");
 // -----------------------------------------------------
 #if defined(SECND_TARGET_HOST)
 #if DEBUG > 5
-    PR05("-------SECND-------\n");
+    PR05("-------SECND TARGET-------\n");
 #endif
     if (ur_connect(SECND_SSID, 0)) {
         PR05("could not connect to %s\n", GET_SSID(SECND_SSID));
         goto out1;
     }
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));              // <== (RE)CHECK THIS
-    mysend(key_raw2cmd[key], SECND_TARGET_HOST, SECND_TARGET_PORT, 0);
+    if (mysend(key_raw2cmd[key], SECND_TARGET_HOST, SECND_TARGET_PORT, 0)) {
+        PR05("could not send [ %s ]\n", key_raw2cmd[key]);
+    }
     ESP_ERROR_CHECK(ur_disconnect());
 // -----------------------------------------------------
 #endif
