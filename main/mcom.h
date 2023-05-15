@@ -1337,6 +1337,14 @@ init_2nd()
 TP05
 #if DEBUG > 5
     PR05("bootCount: %d\n", bootCount);
+
+    const esp_app_desc_t *app_desc_ptr;
+    app_desc_ptr = esp_app_get_description();
+    GS05(app_desc_ptr->project_name);
+    GS05(app_desc_ptr->time);
+    GS05(app_desc_ptr->date);
+    GS05(app_desc_ptr->idf_ver);
+
     print_reset_reason(0);
     print_reset_reason(1);
     print_wakeup_reason();

@@ -3,7 +3,7 @@ ultra-remote (ESP-IDF variant)
 
 work in progress... stay tuned
 
-preferring arduino-esp32? have a look at this: [fast ESP32 WiFi remote control (arduino-esp32 variant)](https://github.com/sp4rkie/ultra-remote-ino)
+preferring arduino-esp32? have a look at this: [fast ESP32 Wi-Fi remote control (arduino-esp32 variant)](https://github.com/sp4rkie/ultra-remote-ino)
 
 ![alt text](images/shot0010.png "Title")
 ![alt text](images/shot0015.png "Title")
@@ -12,13 +12,13 @@ preferring arduino-esp32? have a look at this: [fast ESP32 WiFi remote control (
 what is it
 ----------
 
-- a fast and small [ESP32](https://en.wikipedia.org/wiki/ESP32) WiFi remote control with buttons for a PC or smartphone
+- a fast and small [ESP32](https://en.wikipedia.org/wiki/ESP32) Wi-Fi remote control with buttons for a PC or smartphone
 - the [profile picture](https://avatars.githubusercontent.com/u/3232165?v=4) shows an engineering sample of the device (documentation will follow on [Hackaday.io](https://hackaday.io/))
 
 project main objective
 ----------------------
 
-- implement the fastest WiFi remote control around for your PC or smartphone
+- implement the fastest Wi-Fi remote control around for your PC or smartphone
 
 project status as of current git (see protocol output)
 ------------------------------------------------------
@@ -30,7 +30,7 @@ basic functionality
 -------------------
 
 - wake up after key press
-- connect to WiFi
+- connect to Wi-Fi
 - send an ascii command to one or multiple remote machines
 - receive status for one or multiple commands
 - go to deep sleep again
@@ -61,7 +61,7 @@ runtime environment for a PC
 runtime environment for a smartphone
 ------------------------------------
 
-- smartphone is configured to provide an WiFi hotspot
+- smartphone is configured to provide an Wi-Fi hotspot
 - [Termux](https://termux.dev/en/) and [Tasker](https://tasker.joaoapps.com/) apps are setup and running
 - remote target software to control: netcat-openbsd 1.219-1-0
 
@@ -89,17 +89,23 @@ debug protocol output as of current git
         clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
         mode:DIO, clock div:1
         load:0x3fff0030,len:1416
-        load:0x40078000,len:14756
+        load:0x40078000,len:14800
         load:0x40080400,len:4
         0x40080400: _init at ??:?
 
+        ho 8 tail 4 room 4
         load:0x40080404,len:3348
         entry 0x40080598
-        TP01: 41                                                                    # <-- first trace point after 41ms
-        TP02: 101 WiFi issued                                       
-        cmd: 101 @beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^ -> rpi-5.toh.cx@8889   # <-- CMD sent 101ms after key press
-        TP03: 141 WiFi connected                                                    # <-- asynchronous callback from WiFi
-        stat: 171 #[XX]#[0]#[0]#[xxx]#[0]#[0]                                       # <-- STATUS reveived after 171ms(!) since key press (aka wakeup)
-        E (181) wifi:NAN WiFi stop
-        ets Jun  8 2016 00:22:57
+        TP01: 43
+                    # <-- first trace point after 43ms
+        VBat: 1520mV
+        TP02: 87 WiFi issued
+        cmd: 87 @beep= f:1000 c:1 t:.05 p:.25 g:-20 ^roja ^ -> rpi-5.toh.cx@8889
+                    # <-- CMD sent 87ms after key press
+        TP03: 123 WiFi connected
+                    # <-- asynchronous callback from Wi-Fi after 123ms
+        RSSI: -73 DE 0x14 0x00
+        stat: 151 #[XX]#[0]#[0]#[xxx]#[0]#[0]
+                    # <-- STATUS reveived after 151ms(!) since key press (aka wakeup)
+        E (155) wifi:NAN WiFi stop
 
