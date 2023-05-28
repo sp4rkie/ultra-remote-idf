@@ -39,6 +39,14 @@ typedef _i64          *_i64p;
 #define _SZ(a) (sizeof a)
 #define _NE(a) (_SZ(a) / _SZ(*(a))) // number of elements
 
+#ifndef min
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
 //
 // knock off brainless cc warnings like:
 //
@@ -73,8 +81,8 @@ typedef _i64          *_i64p;
 #define TP04 PR04_("%s\n", __func__);
 #define TP05 PR05_("%s\n", __func__);
 #define TP07 PR07("%s\n", __func__);
-#define GV05(a) PR05_("val: %s == 0x%x\n", #a, (_u32)(a));
-#define GW05(a) PR05_("val: %s == 0x%llx\n", #a, (_u64)(a));
+#define GV05(a) PR05_("val: %s == 0x%x %d\n", #a, (_u32)(a), (_u32)(a));
+#define GW05(a) PR05_("val: %s == 0x%llx %lld\n", #a, (_u64)(a), (_u64)(a));
 #define GV07(a) PR07("val: %s == 0x%x\n", #a, (_u32)(a));
 #define GS05(a) PR05_("str: %s [ %s ]\n", #a, a);
 #define GS07(a) PR07("str: %s [ %s ]\n", #a, a);

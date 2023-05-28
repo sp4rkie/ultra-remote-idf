@@ -26,7 +26,7 @@
 #include "driver/gptimer.h"
 
 #if defined(ESP32_2)            // --- development device ---
-#   define DEBUG                 1
+#   define DEBUG                 0
 #   define BUZZER               23
 #   define VBAT_ADC1_GND_PIN    27              // use a dynamic ground to effectively void its deep sleep current
 #   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4   // IO32
@@ -44,7 +44,7 @@
 #endif
 
 #if 1
-#if 0
+#if 1
 #define SECND_SSID          SMART_SSID
 #define SECND_TARGET_HOST   SMART_TARGET_HOST
 #define SECND_TARGET_PORT   SMART_TARGET_PORT
@@ -92,8 +92,8 @@
 #elif defined(ESP32_12)         // --- 14 button remote control ---
 #   define DEBUG                 0
 //#   define BUZZER                2
-//#   define VBAT_ADC1_GND_PIN    27
-//#   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_4
+#   define VBAT_ADC1_GND_PIN    22
+#   define VBAT_ADC1_SENSE_PIN  ADC_CHANNEL_0
 
 #define FIRST_SSID          DOOR_SSID
 #define FIRST_TARGET_HOST   DOOR_TARGET_HOST
@@ -173,6 +173,16 @@ scan_keys()
 {
 TP05
     _u8 ret = gpio_get_level(KEY_SNS);  // high if pressed
+
+// key board simulation/ programmed 2023/05/27 in Spain/ Andalusia/ Mijas 
+#if defined(ESP32_2)
+{
+    static _i8 was_here;
+    if (bootCount == 1) ++bootCount;
+    ret = !was_here;
+    ++was_here;
+}
+#endif
 
     return ret ? !ret : KEY_CODE_NONE;
 }
@@ -400,12 +410,12 @@ TP05
 scanned key codes to key caps ordering:
 
 00 01      pause media      
-10 11      vol-  vol+        
-20 21      backw forw                            
-30 31  =>  unfav fav   
+04 05      vol-  vol+        
+08 09      backw forw                            
+12 13  =>  unfav fav   
 02 03      undel del                                      
-12 13      mute  nvol                                  
-22 23      rpt   opul                            
+06 07      mute  nvol                                  
+10 11      rpt   opul                            
 
 */
 _i8p
@@ -515,6 +525,16 @@ TP05
 }
 /* ---^^^--- KEY section ---^^^--- */
 
+#if defined(VBAT_ADC1_GND_PIN)
+
+#define VBAT_TRIGGER_LOW_LIMIT      2000    // toss unplausible vals
+#define VBAT_TRIGGER_HIGH_LIMIT     3500
+#define VBAT_TRIGGER_INITIAL       10000    // force an initial trigger
+
+    RTC_DATA_ATTR _i32 vbat_trigger = VBAT_TRIGGER_INITIAL;
+    RTC_DATA_ATTR _i32 vbat         = VBAT_TRIGGER_INITIAL;
+#endif
+
 void
 app_main()
 {
@@ -531,13 +551,6 @@ TP05
     PR05("key: 0x%x [ %lu ]\n", key, esp_log_timestamp());
 #endif
     init_2nd();
-#if defined(VBAT_ADC1_GND_PIN)
-#if DEBUG
-    _i32 mV;
-    ESP_ERROR_CHECK(adc_oneshot_get_calibrated_result(adc1_unit_ptr, adc1_cali_ptr, VBAT_ADC1_SENSE_PIN, &mV));
-    PR05("VBat: %dmV\n", mV);
-#endif
-#endif
 // -----------------------------------------------------
     if (key == KEY_CODE_NONE) {
         goto out1;
@@ -600,9 +613,46 @@ PR05("-------OTA-------\n");
         PR05("could not connect to %s\n", GET_SSID(SECND_SSID));
         goto out1;
     }
+// check undervoltage indication first 
+#if defined(VBAT_ADC1_GND_PIN)
+    _i8 cmd[64];
+    _i8p statmsg;
+
+    if (vbat < vbat_trigger) {
+        snprintf(cmd, _SZ(cmd), "@VBat" "=" "%d", vbat);
+        if (mysend(cmd, SECND_TARGET_HOST, SECND_TARGET_PORT, &statmsg)) {
+            PR05("could not send [ %s ]\n", cmd);
+        }
+        // set new trigger limit but ignore unplausible vals
+        if (atoi(statmsg) > VBAT_TRIGGER_LOW_LIMIT \
+         && atoi(statmsg) < VBAT_TRIGGER_HIGH_LIMIT) {
+            vbat_trigger = min(atoi(statmsg), vbat_trigger);
+#if DEBUG > 1
+            PR05("VTrigger update: %dmV\n", vbat_trigger);
+#endif
+        }
+    } else
+#endif
+    // will not be sent if undervoltage is detected (warning message might still be running)
     if (mysend(key_raw2cmd[key], SECND_TARGET_HOST, SECND_TARGET_PORT, 0)) {
         PR05("could not send [ %s ]\n", key_raw2cmd[key]);
     }
+// measure battery voltage under load (i.e. with WiFi still connected)
+#if defined(VBAT_ADC1_GND_PIN)
+
+    ESP_ERROR_CHECK(adc_oneshot_get_calibrated_result(adc1_unit_ptr, adc1_cali_ptr, VBAT_ADC1_SENSE_PIN, &vbat));
+    // account for 1:1 resistor divider
+    vbat <<= 1;
+
+// vbat simulation/ programmed 2023/05/27 in Spain/ Andalusia/ Mijas 
+#if defined(ESP32_2)   
+    vbat = min(3100, vbat_trigger - 1);
+#endif
+
+#if DEBUG > 1
+    PR05("VBat: %dmV, VTrigger: %dmV\n", vbat, vbat_trigger);
+#endif
+#endif
     ESP_ERROR_CHECK(ur_disconnect());
 // -----------------------------------------------------
 #endif

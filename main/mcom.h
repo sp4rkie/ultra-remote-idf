@@ -856,6 +856,7 @@ TP05
     s_retry_num++;
     if (s_retry_num > WIFI_CONN_MAX_RETRY) {
         PR05("WiFi Connect failed %d times, stop reconnect.\n", s_retry_num);
+        sprintf(gw_ip, "0"); // flag this as permanently unavail
         if (s_semph_get_ip_addrs) {
             xSemaphoreGive(s_semph_get_ip_addrs);
         }
@@ -1200,6 +1201,9 @@ _i8p _err[] = {
     _w1("err#7"),   // temp not plausible
 };
 
+#define WIFI_CONNECT_RETRIES 100    // x >10ms == >1s (account for server busy cmd timeout) 
+#define WIFI_STATUS_TIMEOUT 5       // x 1s == 5s (no status received from server)
+
 _i32
 mysend(_i8p cmd, _i8p host, _i8p port, _i8p *statmsg)
 {
@@ -1214,7 +1218,7 @@ TP05
     };
     struct addrinfo *res;
     _i8 cr_buf[128];
-    _i32 s, r, err, stat;
+    _i32 s, r, err, stat, retries;
 
     stat = 0;
     if (!*gw_ip) {
@@ -1239,6 +1243,9 @@ TP05
         );
 #endif
 #endif
+    } else if (!strcmp(gw_ip, "0")) {   // eval flagged error
+        stat = 1;
+        goto out2;
     }
     err = getaddrinfo(host, port, &hints, &res);
     if (err || !res) {
@@ -1246,18 +1253,28 @@ TP05
         stat = 2;
         goto out2;
     }
-    s = socket(res->ai_family, res->ai_socktype, 0);
-    if (s < 0) {
-        PR05("... Failed to allocate socket.\n");
-        freeaddrinfo(res);
-        stat = 2;
-        goto out2;
-    }
-    if (connect(s, res->ai_addr, res->ai_addrlen)) {
-        PR05("... socket connect failed errno=%d\n", errno);
-        freeaddrinfo(res);
-        stat = 2;
-        goto out1;
+
+    retries = WIFI_CONNECT_RETRIES;
+    while (1) {
+        s = socket(res->ai_family, res->ai_socktype, 0);
+        if (s < 0) {
+            PR05("... Failed to allocate socket.\n");
+            freeaddrinfo(res);
+            stat = 2;
+            goto out2;
+        }
+        if (connect(s, res->ai_addr, res->ai_addrlen)) {
+            PR05("... socket connect failed errno=%d at %lu\n", errno, esp_log_timestamp());
+            if (--retries > 0) {
+                close(s);
+                vTaskDelay(pdMS_TO_TICKS(10));
+                continue;
+            }
+            freeaddrinfo(res);
+            stat = 2;
+            goto out1;
+        }
+        break;
     }
     freeaddrinfo(res);
     snprintf(cr_buf, _SZ(cr_buf), "%s\n", cmd);
@@ -1268,7 +1285,7 @@ TP05
     }
     // bail if no status received
     struct timeval receiving_timeout;
-    receiving_timeout.tv_sec = 5;
+    receiving_timeout.tv_sec = WIFI_STATUS_TIMEOUT;
     receiving_timeout.tv_usec = 0;
     if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &receiving_timeout, sizeof(receiving_timeout)) < 0) {
         PR05("... failed to set socket receiving timeout\n");
