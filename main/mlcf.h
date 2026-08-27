@@ -13,7 +13,11 @@
 typedef unsigned char  _u8;
 typedef unsigned short _u16;
 typedef unsigned int   _u32;
-#if defined(ESP8266) || defined(ESP32) || defined(CONFIG_IDF_TARGET_ESP32)
+#if defined(CONFIG_IDF_CMAKE) 
+// even though sizeof(unsigned long) == sizeof(unsigned int) == sizeof(uint32_t):
+// _u32 is treated incomp to uint32_t on this f...... machine????
+// but __u32 is treated comp to uint32_t
+typedef unsigned long  __u32;   
 typedef unsigned long long _u64;
 #else
 typedef unsigned long _u64;
@@ -26,7 +30,11 @@ typedef _u64          *_u64p;
 typedef char           _i8;
 typedef short          _i16;
 typedef int            _i32;
-#if defined(ESP8266) || defined(ESP32) || defined(CONFIG_IDF_TARGET_ESP32)
+#if defined(CONFIG_IDF_CMAKE) 
+// even sizeof(long) == sizeof(int) == sizeof(int32_t): 
+// _i32 is treated incomp to int32_t on this f...... machine????
+// but __i32 is treated comp to int32_t
+typedef long           __i32;
 typedef long long      _i64;
 #else
 typedef long           _i64;
@@ -36,25 +44,32 @@ typedef _i16          *_i16p;
 typedef _i32          *_i32p;
 typedef _i64          *_i64p;
 
-#define _SZ(a) (sizeof a)
+#define _SZ(a) (sizeof (a)) // f...... () required by rpi cc
 #define _NE(a) (_SZ(a) / _SZ(*(a))) // number of elements
 
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#if defined(CONFIG_ARDUINO_VARIANT)
+#define _min(a, b) ((a) < (b) ? (a) : (b)) // some arduino i..... sometimes undef min / max right after this -> so keep a backup
+#endif
 #endif
 
 #ifndef max
 #define max(a, b) ((a) > (b) ? (a) : (b))
+#if defined(CONFIG_ARDUINO_VARIANT)
+#define _max(a, b) ((a) > (b) ? (a) : (b)) // some arduino i..... sometimes undef min / max right after this -> so keep a backup
+#endif
 #endif
 
+#define CDEF2STR_HELPER(x) #x
+#define CDEF2STR(x) CDEF2STR_HELPER(x)
+
 //
-// knock off brainless cc warnings like:
+// knock off some b........ cc/c++ warning terrorism like:
 //
-//  warning: initialization discards 'const' qualifier from pointer target type
-#define _w1(a) ((const _i8p)(a))
-//
-//  warning: suggest parentheses around assignment used as truth value
-#define _w2(a) (a)
+
+//  warning: ISO C++ forbids converting a string constant to '_i8p' {aka 'char*'} [-Wwrite-strings]
+#define _w1(a) ((_i8p)(a))
 
 //
 // a neat debug foundation [ see fct4_glue.c how to use ]
@@ -68,18 +83,12 @@ typedef _i64          *_i64p;
 //#define PR05_(fmt, a...) printk("[ %02d ] " fmt, smp_processor_id(), ##a)              // sel1: activate debug to dmesg
 //#define PR05_(fmt, a...) trc_m(fct4_debugid, "[ %02d ] " fmt, smp_processor_id(), ##a) // sel1: activate debug to buffer
 #define PR04_(fmt, a...) fprintf(stderr, fmt, ##a)
-#define PR04(a...) PR04_(a);
-#if defined(ESP8266) || defined(ESP32)
-#define PR05_(fmt, a...) Serial.printf(fmt, ##a)
-#else
+//#define PR04(a...) PR04_(a);
 #define PR05_(fmt, a...) printf(fmt, ##a)
-#endif
-#define PR05(a...) PR05_(a);
-//#define PR06_(a...) PR05_(a)                                                           // sel2: activate bf_xxx debug
-#define PR06(a...)                                                                     // not used
-#define PR07(a...) printk(a);                                                          // permanent log
+//#define PR05(...) printf(__VA_ARGS__)
+//#define PR05(a...) PR05_(a);
 #define TP04 PR04_("%s\n", __func__);
-#define TP05 PR05_("%s\n", __func__);
+//#define TP05 PR05_("%s\n", __func__);
 #define TP07 PR07("%s\n", __func__);
 #define GV05(a) PR05_("val: %s == 0x%x %d\n", #a, (_u32)(a), (_u32)(a));
 #define GW05(a) PR05_("val: %s == 0x%llx %lld\n", #a, (_u64)(a), (_u64)(a));
@@ -92,6 +101,33 @@ typedef _i64          *_i64p;
 #define DI05(a) // fct4_dump_iocb(a, __func__, __FILE__, __LINE__, #a); // key structure sampled at some strategic places
 #define DW05(a) // fct4_dump_wqe(a, __func__, __FILE__, __LINE__, #a);  // key structure sampled at some strategic places
 #define DS05(a) // fct4_dump_sif(a, __func__, __FILE__, __LINE__, #a);  // key structure sampled at some strategic places
+
+#if defined(DEBUG)
+#define PR00(...)                      printf(__VA_ARGS__)
+#define PR01(...) do { if (DEBUG >= 1) printf(__VA_ARGS__); } while (0)
+#define PR02(...) do { if (DEBUG >= 2) printf(__VA_ARGS__); } while (0)
+#define PR03(...) do { if (DEBUG >= 3) printf(__VA_ARGS__); } while (0)
+#define PR04(...) do { if (DEBUG >= 4) printf(__VA_ARGS__); } while (0)
+#define PR05(...) do { if (DEBUG >= 5) printf(__VA_ARGS__); } while (0)
+#define PR06(...) do { if (DEBUG >= 6) printf(__VA_ARGS__); } while (0)
+#define PR07(...) do { if (DEBUG >= 7) printf(__VA_ARGS__); } while (0)
+#define PR08(...) do { if (DEBUG >= 8) printf(__VA_ARGS__); } while (0)
+#define PR09(...) do { if (DEBUG >= 9) printf(__VA_ARGS__); } while (0)
+#define PR10(...) do { if (DEBUG >= 10) printf(__VA_ARGS__); } while (0)
+#define PR11(...) do { if (DEBUG >= 11) printf(__VA_ARGS__); } while (0)
+
+#define TP05 do { if (DEBUG >= 5) printf("%s\n", __func__); } while (0);    // <-- must trail with ;
+
+#else   // if defined(DEBUG)
+
+/*
+ * for compatibility
+ */
+#define PR05(a...) PR05_(a);
+#define TP05 PR05_("%s\n", __func__);
+
+#endif  // if defined(DEBUG)
+
 // --- ^^^ --- debug section --- ^^^ ---
 
 // --- vvv --- trace section --- vvv ---
@@ -104,6 +140,37 @@ typedef _i64          *_i64p;
 #define PR15_(fmt, a...) trc_m(fct4_traceid, "[ %02d ] " fmt, smp_processor_id(), ##a) // sel3: activate tracing to buffer
 #define PR15(a...) PR15_(a);
 // --- ^^^ --- trace section --- ^^^ ---
+
+#define BIN_FORMAT8 "%c%c%c%c%c%c%c%c"
+#define BIN_VALUE8(byte)  \
+((byte) & 0x80 ? '1' : '0'), \
+((byte) & 0x40 ? '1' : '0'), \
+((byte) & 0x20 ? '1' : '0'), \
+((byte) & 0x10 ? '1' : '0'), \
+((byte) & 0x08 ? '1' : '0'), \
+((byte) & 0x04 ? '1' : '0'), \
+((byte) & 0x02 ? '1' : '0'), \
+((byte) & 0x01 ? '1' : '0')
+
+#define BIN_FORMAT32 \
+       BIN_FORMAT8 " " \
+       BIN_FORMAT8 " " \
+       BIN_FORMAT8 " " \
+       BIN_FORMAT8
+
+#define BIN_VALUE32(a) \
+       BIN_VALUE8((a) >> 24), \
+       BIN_VALUE8((a) >> 16), \
+       BIN_VALUE8((a) >>  8), \
+       BIN_VALUE8((a) >>  0)
+
+#define BIN_FORMAT16 \
+       BIN_FORMAT8 " " \
+       BIN_FORMAT8
+
+#define BIN_VALUE16(a) \
+       BIN_VALUE8((a) >>  8), \
+       BIN_VALUE8((a) >>  0)
 
 #define SWP_16(a) \
     ((_u32)(a) << 8 & 0xff00 | \
@@ -156,7 +223,7 @@ do { \
 #define fct4_debugfs_slow_ring_trc5_1(a, b, c, d, e) fct4_debugfs_slow_ring_trc(a, b, c, d)
 #define fct4_debugfs_slow_ring_trc5_2(a, b, c, d, e) fct4_debugfs_slow_ring_trc(a, b, c)
 
-#ifdef PR05_
+#if defined(PR05_)
 #define writel_(a, b) (PR05_("writel: *" #b " = " #a " [ *0x%016lx = 0x%lx ]\n", (_u64)(b), (_u64)(a)), writel((a), (b)))
 #define readl_(a) (PR05_("readl: *" #a " [ *0x%016lx == 0x%lx ]\n", (_u64)(a), (_u64)readl(a)), readl(a))
 
@@ -178,7 +245,7 @@ do { \
 
 // each time they issue a new lpfc version the data format of phba->sli4_hba.link_state.speed changes
 // --> try to neutralize the impact with a central wrapper
-#define FCT4_UNCRAPITIZE_LINK_SPEED(a) ((a) > 1000 ? (a) / 1000 : (a))
+#define FCT4_NORMALIZE_LINK_SPEED(a) ((a) > 1000 ? (a) / 1000 : (a))
 
 // --- ^^^ ------------------------- value added SLI4 target mode ---------------------------------
 
@@ -220,7 +287,7 @@ do { \
         ((ptr)->name##_WORD = ((((value) & name##_MASK) << name##_SHIFT) | \
                  ((ptr)->name##_WORD & ~(name##_MASK << name##_SHIFT))))
 
-#ifdef PR06_
+#if defined(PR06_)
 #define bf_get_be32_(name, ptr) \
         (PR06_("bf_get_be32: *" #ptr "->" #name " [ *0x%016lx == 0x%08x ]\n", \
                 (_u64)&(ptr)->name##_WORD, bf_get_be32_(name, ptr)), \
