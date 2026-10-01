@@ -1,8 +1,8 @@
 /*
  *  extract contents with:
  *
- *      clear; egrep -e '---(vvv|\^\^\^)---|CONFIG_ARDUINO_VARIANT'  ~/esp/mcom.h
- *      clear; egrep -e '---(vvv|\^\^\^)---|CONFIG_ARDUINO_VARIANT_' ~/esp/mcom.h
+ *      clear; egrep -e '---(vvv|\^\^\^)---|MCOM_ARD'  ~/esp/mcom.h
+ *      clear; egrep -e '---(vvv|\^\^\^)---|MCOM_ARD_' ~/esp/mcom.h
  *
  * contents here mainly based on:
  * esp-idf.master/examples/protocols/static_ip/main/static_ip_example_main.c
@@ -13,19 +13,32 @@
  * esp-idf.master/components/esp_netif/include/esp_netif_types.h
  */
 
+
+/*
+ * MCOM_ARD - which half of this file a translation unit gets.
+ *
+ * CONFIG_ARDUINO_VARIANT alone only says arduino-esp32 is somewhere in the component graph: it is a
+ * Kconfig string that exists the moment the component is linked, whatever the including file wants.
+ * the arduino half includes "WiFi.h", a C++ header, so no .c file could ever compile it - adding
+ * __cplusplus changes no existing build, and lets a .c file take the idf half in a project that still
+ * links arduino libraries through a .cpp shim (ultra_temp: GxEPD2, DallasTemperature).
+ */
+#if defined(CONFIG_ARDUINO_VARIANT) && defined(__cplusplus)
+#define MCOM_ARD
+#endif
 #if !defined(_MCOM_MINIMAL_)
 /* ---vvv--- intro ---vvv-------------------------------------------------------------------------------------- */
 // e.g. ultra-tester-2-0078
 _i8 DEVICE_FW[32] = PROJECT "-" CDEF2STR(ENTITY) "-" SERNO;
 
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
 
 #define NO_DHCP
 //#define DUMP_SOME                       // massive struct dump/ must have already started wifi for that/ ard-esp32: must be called after WiFi.begin()
-#define ACCESSPOINT_CONNECT_BOOSTER     // required for the phone hotspot even with NO DHCP/ but should be avoided for all others to gain 10ms!!
-                                        // UPDATE as of 2024_10_07 ACTIVATES AUTOMATICALLY FOR the phone hotspot ONLY
+#define ACCESSPOINT_CONNECT_BOOSTER     // required for host6 even with NO DHCP/ but should be avoided for all others to gain 10ms!!
+                                        // UPDATE as of 2024_10_07 ACTIVATES AUTOMATICALLY FOR host10 ONLY
                                         // aka [ AUTO ACCESSPOINT_CONNECT_BOOSTER OFF ]
-#else // defined(CONFIG_ARDUINO_VARIANT)
+#else // defined(MCOM_ARD)
 
 //---vvv-------------- WiFi / no ETH --------------------
 #if !defined(ETH_OPMODE)
@@ -40,7 +53,7 @@ _i8 DEVICE_FW[32] = PROJECT "-" CDEF2STR(ENTITY) "-" SERNO;
 /*
  * CACHE_CHANNEL - MEASURED AND REJECTED 2026_08_15 (entities 2 and 53). REDUNDANT.
  *
- * theory: ultra_ap runs an ESP32 softAP on CHANNEL 11, the top of the 2.4GHz sweep, so without a hint
+ * theory: ultra_ap runs esp32-57 on CHANNEL 11, the top of the 2.4GHz sweep, so without a hint
  * the STA would probe ~10 channels before finding the SSID, and w_link_up costs 24..31ms.
  *
  * WRONG - THE DRIVER ALREADY DOES THIS. because we run esp_wifi_set_storage(WIFI_STORAGE_FLASH)
@@ -81,7 +94,7 @@ _i8 DEVICE_FW[32] = PROJECT "-" CDEF2STR(ENTITY) "-" SERNO;
  *    after ASSOCIATION - possibly before the 4-way handshake finished and the AP installed keys.
  *    the first frame then goes into a hole and we wait out a retransmit timer
  *
- * MEASURED AND REJECTED against an ESP32 softAP (entity 53, ~100 cycles per arm). the tail is counted as
+ * MEASURED AND REJECTED against esp32-57 (entity 53, ~100 cycles per arm). the tail is counted as
  * the share of cycles at least 200ms above that arm's OWN median, so the added delay cannot skew
  * the comparison:
  *
@@ -121,7 +134,7 @@ _i8 DEVICE_FW[32] = PROJECT "-" CDEF2STR(ENTITY) "-" SERNO;
  *
  * measured 2026_08_15: entity 53 (C5) spends 304..446ms in getaddrinfo() on ~80% of its wakeups
  * and 4.9ms on the other 20%, entity 2 does the identical lookup in 4.4..5.4ms nearly every time.
- * a tcpdump on the DNS server shows ONE query per wakeup, answered in
+ * a tcpdump on host4 (the DNS server, 192.168.0.24) shows ONE query per wakeup, answered in
  * ~400us, no retransmissions - so the 304ms is spent inside the C5, not on the network, and the
  * root cause is still unknown. this sidesteps it and pays for itself on the other chips too.
  *
@@ -196,7 +209,7 @@ _i8 DEVICE_FW[32] = PROJECT "-" CDEF2STR(ENTITY) "-" SERNO;
 #define ESP_ARDUINO_VERSION 100         // make it always true to use associated code on ESP
 #define ESP_ARDUINO_VERSION_VAL(a, b, c) 1
 
-#endif // defined(CONFIG_ARDUINO_VARIANT)
+#endif // defined(MCOM_ARD)
 
 // some i.... did remove this on some archs?!
 #if !defined(MACSTR)
@@ -210,7 +223,7 @@ _i8 DEVICE_FW[32] = PROJECT "-" CDEF2STR(ENTITY) "-" SERNO;
 
 /* ---vvv--- debug ---vvv-------------------------------------------------------------------------------------- */
 
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
 
 #include "WiFi.h"       // required by WiFiEvent()
 #include "WiFiType.h"   // needed for WL_NO_SHIELD...
@@ -229,7 +242,7 @@ _i8 DEVICE_FW[32] = PROJECT "-" CDEF2STR(ENTITY) "-" SERNO;
 #define tstamp() (__u32)esp_log_timestamp()     // is natively: type 'uint32_t' {aka 'unsigned int'}
 #endif
 
-#else   // defined(CONFIG_ARDUINO_VARIANT)
+#else   // defined(MCOM_ARD)
 
 #include "esp_sleep.h"          // required by touch_pad_t 
 #include "esp_timer.h"          // required by esp_timer_get_time()
@@ -253,7 +266,7 @@ _i8 DEVICE_FW[32] = PROJECT "-" CDEF2STR(ENTITY) "-" SERNO;
 
 #define tstamp() esp_log_timestamp()
 
-#endif  // defined(CONFIG_ARDUINO_VARIANT)
+#endif  // defined(MCOM_ARD)
 
 /*
  * profiling hook for the WiFi wakeup -> send path
@@ -285,7 +298,7 @@ print_wakeup_touchpad()
 #if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C5)
     PR00("print_wakeup_touchpad() not supported\n"); 
 #else
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
     _i32 touchPin = esp_sleep_get_touchpad_wakeup_status();
 #else
     touch_pad_t touchPin = esp_sleep_get_touchpad_wakeup_status();
@@ -427,7 +440,7 @@ print_reset_reason(_u32 cpu)
     }
 }
 
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
 
 const _i8 *
 give_wifi_status(_u8 stat)
@@ -514,7 +527,7 @@ give_wifi_event(_u8 event)
   }
 }
 
-#else   // defined(CONFIG_ARDUINO_VARIANT)
+#else   // defined(MCOM_ARD)
 
 #define WIFI_DIAG(a) 
 
@@ -597,7 +610,7 @@ PR00("get power save: %s country [%c%c%c] bw2G: %s bw5G: %s\n",  \
 #define WIFI_FIXER_DEBUG(str, mode)
 #endif  // if DEBUG > 1
 
-#endif  // defined(CONFIG_ARDUINO_VARIANT)
+#endif  // defined(MCOM_ARD)
 
 const _i8 *
 give_ps(_u32 ps)
@@ -1005,13 +1018,13 @@ TP05
 #endif
         } else {
             ledc_timer_config_t ledc_timer = {
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
                 .speed_mode       = LEDC_HIGH_SPEED_MODE,
                 .duty_resolution  = LEDC_TIMER_13_BIT,
                 .timer_num        = LEDC_TIMER_0,
                 .freq_hz          = freq,
                 .clk_cfg          = LEDC_AUTO_CLK
-#else   // defined(CONFIG_ARDUINO_VARIANT)
+#else   // defined(MCOM_ARD)
 #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32S3)
                 .speed_mode       = LEDC_LOW_SPEED_MODE,
 #else
@@ -1037,18 +1050,18 @@ TP05
 #else
                 .clk_cfg          = LEDC_AUTO_CLK
 #endif
-#endif  // defined(CONFIG_ARDUINO_VARIANT)
+#endif  // defined(MCOM_ARD)
             };
             ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
             ledc_channel_config_t ledc_channel = {
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
                 .gpio_num       = BUZZER,
                 .speed_mode     = LEDC_HIGH_SPEED_MODE,
                 .channel        = LEDC_CHANNEL_0,
                 .intr_type      = LEDC_INTR_DISABLE,
                 .timer_sel      = LEDC_TIMER_0,
                 .duty           = duty,
-#else   // defined(CONFIG_ARDUINO_VARIANT)
+#else   // defined(MCOM_ARD)
 #if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32S3)
                 .speed_mode     = LEDC_LOW_SPEED_MODE,
 #else
@@ -1059,7 +1072,7 @@ TP05
                 .intr_type      = LEDC_INTR_DISABLE,
                 .gpio_num       = BUZZER,
                 .duty           = duty,
-#endif  // defined(CONFIG_ARDUINO_VARIANT)
+#endif  // defined(MCOM_ARD)
             };
             ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
             ++was_here;
@@ -1306,7 +1319,25 @@ TP05
 
 
 #if 0
-// (local accesspoint inventory removed for publication)
+===================== ACCESSPOINTS AS OF 2026_03_03 (authoritative here!!) =====================
+
+check with [ iw wlan0 station dump | grep Station | wc ] for utilization grade
+
+host13   name_accesspoint2       pass_accesspoint4...    5G  ROTA5G_SSID # <-- chan 36 C5 only
+host11  name_accesspoint2       pass_accesspoint4...    5G  ROTA5G_SSID # <-- chan 36 C5 only
+host12  name_accesspoint2       pass_accesspoint4...    5G  ROTA5G_SSID # <-- chan 36 C5 only
+host7 name_accesspoint2       pass_accesspoint4...    5G  ROTA5G_SSID # <-- chan 36 C5 only      
+host8 name_accesspoint2       pass_accesspoint4...    5G  ROTA5G_SSID # <-- chan 36 C5 only      
+host9 name_accesspoint2      pass_accesspoint2...    2G  ROTA2I_SSID # <-- chan 11 for test devices "study" / ALSO MICRO_AP!!!
+host12  name_accesspoint3      pass_accesspoint2...    2G  ROTA2K_SSID # <-- chan  6 for permanent devices "mediaroom"
+ufire name_accesspoint2       pass_accesspoint4...    2G  UFIRE_SSID  # <-- ufire
+u2fire name_accesspoint7     pass_accesspoint4...    5G  U2FIRE_SSID # <-- u2fire
+host5 name_accesspoint2       pass_accesspoint4...    5G  ROTA5G_SSID # <-- ufire
+sfire name_accesspoint5       pass_accesspoint5...    2G  SFIRE_SSID  # <-- sfire 
+      name_accesspoint5                        5G              # <-- sfire 
+kfire name_accesspoint1 pass_accesspoint1...    2G  KFIRE_SSID  # <-- kfire
+host10  name_accesspoint6      pass_accesspoint2...    2G  TETHER_SSID # <-- wireless hotspot
+===================== ACCESSPOINTS AS OF 2025_04_19 (authoritative here!!) =====================
 #endif
 
 
@@ -1330,7 +1361,7 @@ TP05
 #define CC2STR(a) (a)[0], (a)[1], (a)[2]
 #define CCSTR "%c%c%c"
 
-_i8p accpts[] = {
+_i8cp accpts[] = {
     NA_SSID_STR,        NA_PASSWORD_STR,        //  0                 
     U2FIRE_SSID_STR,    U2FIRE_PASSWORD_STR,    //  1  
     ROTA2I_SSID_STR,    ROTA2I_PASSWORD_STR,    //  2  
@@ -1401,7 +1432,7 @@ void
 dump_some(_i32 wifi_mode, const _i8 *str)
 {
 
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
 
 //calling esp_wifi_sta_get_ap_info() provides we already received:
 //WiFi Event [ 510 ] Connected to access point
@@ -1412,7 +1443,7 @@ while (WiFi.status() != WL_CONNECTED) {
 }
 vTaskDelay(pdMS_TO_TICKS(100));
 
-#endif  // defined(CONFIG_ARDUINO_VARIANT)
+#endif  // defined(MCOM_ARD)
 
     PR00("---v--- %s (%s)---v---\n", str, give_mode(wifi_mode));
     _i8 country[20];
@@ -1806,7 +1837,26 @@ if (wait) {
 #include "esp_ota_ops.h"
 #include "esp_https_ota.h"      // required for esp_https_ota_config_t in mcom.h
 
-#define URL_FW_DIR _w1("http://example.com/")
+#ifndef URL_FW_DIR      /* -DURL_FW_DIR=... overrides it, for the http/https A-B */
+#define URL_FW_DIR "http://example.com/"
+#endif
+
+#ifdef OTA_MTLS
+/*
+ * client certificate + our own CA root, embedded by the project's main/CMakeLists.txt via
+ * EMBED_TXTFILES. only a project that actually embeds them may define OTA_MTLS - every other
+ * project keeps linking exactly as before
+ */
+extern const char ota_ca_crt_start[]     asm("_binary_ca_crt_start");
+extern const char ota_client_crt_start[] asm("_binary_device_crt_start");
+extern const char ota_client_key_start[] asm("_binary_device_key_start");
+#define OTA_MTLS_FIELDS                          \
+        .cert_pem        = ota_ca_crt_start,     \
+        .client_cert_pem = ota_client_crt_start, \
+        .client_key_pem  = ota_client_key_start,
+#else
+#define OTA_MTLS_FIELDS
+#endif
 #define SERNO_ strtol(SERNO, 0, 16)
 
 /*
@@ -1880,6 +1930,7 @@ get_latest_firmware(_i8p fw_name)
         .user_agent = DEVICE_FW,
         .method = HTTP_METHOD_GET,
         .timeout_ms = 4000,
+        OTA_MTLS_FIELDS
     };
     regex_t regex_fw;
     _i32 err;
@@ -1914,6 +1965,7 @@ get_latest_firmware(_i8p fw_name)
     //
 #endif
     ESP_ERROR_CHECK(esp_http_client_open(client, 0));
+WTPROF("w_idx_open");   // TCP connect + (for https) the whole TLS handshake
     if (esp_http_client_fetch_headers(client)) {        // read (aka discard) headers 
         PR06("processing of non chunked data of known length starts\n");
     } else {
@@ -1947,6 +1999,7 @@ get_latest_firmware(_i8p fw_name)
         }
         if (i != len) break;
     }
+WTPROF("w_idx_read");   // index body read + regex scan
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
     regfree(&regex_fw);
@@ -2027,14 +2080,14 @@ TP05
     _i8 fw_name[64];
     _i32 stat = 0;  // default no err
 
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
     extern _i32 wait4wifi();
     if (wait4wifi()) {  
         PR00("ERROR: could not OTA (no wifi)\n");
         stat = 1;
         goto out;
     }
-#endif  // defined(CONFIG_ARDUINO_VARIANT)
+#endif  // defined(MCOM_ARD)
 
     fw_num = get_latest_firmware(fw_name);
     PR00("current FW: %s\n", DEVICE_FW);
@@ -2054,6 +2107,7 @@ TP05
             .user_agent = DEVICE_FW,
             .event_handler = _http_event_handler,
             .keep_alive_enable = true,
+            OTA_MTLS_FIELDS
         };
         esp_https_ota_config_t ota_config = {
             .http_config = &config,
@@ -2067,6 +2121,7 @@ TP05
         config.url = url;
         beep_sync();  // flush to avoid interference with OTA
         PR00("OTA starts\n");
+WTPROF("w_ota_start");  // second connection: handshake again, then the image transfer
 #if ESP_ARDUINO_VERSION > ESP_ARDUINO_VERSION_VAL(2,0,17)       // aka since 3.0.4
         if (!esp_https_ota(&ota_config)) {
 #else
@@ -2080,7 +2135,7 @@ TP05
             stat = 1;
         }
     }
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
 out:
 #endif
     if (stat) {
@@ -2110,9 +2165,9 @@ TP05
             }
 #else
             PR06("FW UPGRADE via WIFI_CLIENT\n");
-#ifdef CONFIG_ARDUINO_VARIANT
-            extern _i32 init_3rd(_u8, _i8p);
-            if (init_3rd(OTA_SSID, _w1(__FILE__))) {
+#ifdef MCOM_ARD
+            extern _i32 init_3rd(_u8, _i8cp);
+            if (init_3rd(OTA_SSID, __FILE__)) {
 #else
             extern esp_err_t ur_connect(_u8, bool, _u32, _u32);
             if (ur_connect(OTA_SSID, WIFI_CONN_WAIT, WIFI_CONN_SLOW_FAIL, WIFI_PS_NONE)) { //}
@@ -2172,16 +2227,19 @@ regmatch_t _pmatch[7];  // nr of parenthesized subexprs in STATUS_MATCH + 1
  */
 // ']' is escaped differently in l7.awklib:
 //              "^#\\[([^\\]]+)\\]" 
-_i8p STATUS_MATCH =
-            _w1("^#\\[([^]]+)\\]" \
+_i8cp STATUS_MATCH =
+            "^#\\[([^]]+)\\]" \
                  "#\\[([01])\\]" \
                  "#\\[([01])\\]" \
                  "#\\[([a-z0-9]+)\\]" \
                  "#\\[([^()]+)\\]" \
-                 "#\\[([01])\\]$");
+                 "#\\[([01])\\]$";
 
 // encodings in misc subfield of status (must match pq.awklib):
-#define STATUS_MISC_DUPLICATE  252       // duplicate detected in MULTI_ANTENNA_GATEWAY
+// 252 (was STATUS_MISC_DUPLICATE) is RETIRED - it existed while the gateways still had to
+// translate an error status carrying that marker back into a good one. targets now filter their
+// own duplicates and answer them with the same benign status as a real execution, so nothing
+// marks a duplicate on the wire any more. do not reintroduce it
 #define STATUS_MISC_PLAY_RUN   253       // player running indication
 
 #define STAT_CMD 1     // parenthesized subexprs indices
@@ -2192,19 +2250,19 @@ _i8p STATUS_MATCH =
 #define STAT_STAT 6
 // ---^^^--- STATUS encodings ---^^^---
 
-_i8p _err[] = {
-    _w1("ok"),      // sample text
+_i8cp _err[] = {
+    "ok",      // sample text
 
     // this module
-    _w1("err#1"),   // no WiFi conn (so no status)   
-    _w1("err#2"),   // no target conn (so no status)
-    _w1("err#3"),   // conn but no status          
-    _w1("err#4"),   // wrong status format        
-    _w1("err#5"),   // status nok                     
+    "err#1",   // no WiFi conn (so no status)   
+    "err#2",   // no target conn (so no status)
+    "err#3",   // conn but no status          
+    "err#4",   // wrong status format        
+    "err#5",   // status nok                     
 
     // others          
-    _w1("err#6"),   // temp conversion not complete
-    _w1("err#7"),   // temp not plausible
+    "err#6",   // temp conversion not complete
+    "err#7",   // temp not plausible
 };
 
 #endif  // if defined(WIFI_INITIATOR) || defined(ESPNOW_INITIATOR) || defined(ETH_INITIATOR)
@@ -2225,6 +2283,15 @@ typedef struct {
     _i8 rssi;
     _u8 src_mac[ESP_NOW_ETH_ALEN];
     _u8 dst_mac[ESP_NOW_ETH_ALEN];
+#if defined(GW_TIMING_TRACE)
+    /*
+     * arrival time in the recv callback, us. the ONLY way to see how long a command sat in
+     * espnow_unsol_que: the task cannot ask afterwards when its packet turned up, and a side
+     * channel would race the queue. tstamp() is no use here - it is tick based at FREERTOS_HZ
+     * 100, i.e. 10ms granular, against a queue wait we expect to be a few ms
+     */
+    _u64 t_rx;
+#endif
 } espnow_packet_t;
 
 // stripped down espnow_packet_t with data only for easy espnow_packet_t -> generic_packet_t copy
@@ -2248,7 +2315,18 @@ espnow_packet_t espnow_sol_pkt;
 #define ESPNOW_EVENT_RESPONSE_MASK ( \
                                        ESPNOW_EVENT_RESPONSE_RECEIVED(0) /* all msks combined */ \
                                    )
-#define ESPNOW_STATUS_TIMEOUT 1000
+#define ESPNOW_STATUS_TIMEOUT 1000  // time window should preferredly match status reporting lag of non pre-acked 2-char cmds
+                                    // UPDATE as of 2026_09_13: stay at 1000ms to timeout quickly if no connection exists at all
+/*
+ * ESPNOW_RESEND_UNANSWERED - how often a cmd that drew no answer within ESPNOW_STATUS_TIMEOUT is
+ * sent again, unchanged, serial and all. 0, the default, keeps the single attempt. repeating is
+ * safe because of the serial: the target executes the first copy it sees and answers any later
+ * one as a duplicate with the same status (bell: "sent duplicate"), and tcp_server drops repeats
+ * of pre-acked cmds. define it per entity before including this file
+ */
+#if !defined(ESPNOW_RESEND_UNANSWERED)
+#define ESPNOW_RESEND_UNANSWERED 0
+#endif
 
 // check for existence of EvGrp to allow ESPNOW_QUE_DEINIT() to be a stub
 // due to EvGrps and such can't be deleted easily
@@ -2297,26 +2375,75 @@ stat: 356 #[XX]#[0]#[0]#[xxx]#[254]#[0], rssi -94
  *  if the cmd is sent pre-acked esp32_decode/tcp_server takes care of serial-no evaluation
  *  if the cmd is sent non-pre-acked the target application must understand serial-no handling
  */
+/*
+ * ESPNOW_DUT_GW_MAC - slot 1 of the array below, the ONE gateway under test.
+ *
+ * 2026_09_01, one-at-a-time comparison of the co-located bench gateways 75/81/87. they may NOT be
+ * measured simultaneously: with all three in the array they shut each other out, measured as
+ * esp32-87 hearing 3% at 20dBm but 6% at 16dBm (n~1716 per level, >7 sigma the WRONG way) - a link
+ * budget cannot do that, only the neighbours' own transmissions can. every gateway that hears also
+ * answers, so each extra entry is more airtime right at the bench.
+ *
+ * the array is therefore held at exactly FOUR entries and only this slot changes. slot 1 is where
+ * ESPNOW_007 (esp32-75) always sat, so with 007 selected the array is byte-identical to the
+ * historic configuration and all three sessions compare to each other AND to the older campaign
+ * data. esp32-79 stays in although it is dead weight at this bench (0%): holding the conditions
+ * identical across the three sessions is worth more than the retry chain it costs.
+ *
+ * switch by moving the comment. rebuild and reflash BOTH remotes (45 and 53) for each session.
+ *
+ * refer to mcfg_local.h for a full gateway list
+ */
+//#define ESPNOW_DUT_GW_MAC ESPNOW_005_GW_MAC   // esp32-61  TESTING esp32-eth01 wireless-tag clone,
+                                                //           plain ESP32, ON-BOARD antenna
+  #define ESPNOW_DUT_GW_MAC ESPNOW_007_GW_MAC   // esp32-75  DEFAULT, "bedroom"
+//#define ESPNOW_DUT_GW_MAC ESPNOW_010_GW_MAC   // esp32-81  RETIRED 2026_09_01 - withdrawn
+                                                //           from the comparison by hand
+//#define ESPNOW_DUT_GW_MAC ESPNOW_011_GW_MAC   // esp32-87  TESTING
+
+/*
+ * ESPNOW_BENCH_DROP_UNREACHABLE - leave out the array entries this site cannot reach at all.
+ *
+ * OFF by default, deliberately. the tx power campaign above needs the array held byte-identical
+ * across its sessions, and esp32-79 is part of that constant even though it answers 0% here - so
+ * uncommenting this in mcom.h would silently change the conditions for every project that defines
+ * MULTI_ANTENNA_GATEWAY, the sweep included. define it in the PROJECT instead, ahead of
+ * #include "mcom.h", the way ultra_remote does.
+ *
+ * it exists for the audible-gap hunt on the key press path, where the array is not a constant to
+ * be preserved but the thing under investigation. measured on esp32-45 out of the study collector
+ * capture, 2026_09_14 16:20..16:50, 1039 commands - air frames per unicast burst, per destination:
+ *
+ *      esp32-77 study        1.0 mean, ACKed on the first frame 100% of the time
+ *      esp32-87 mediaroom    6.2 mean
+ *      esp32-75 bedroom     26.2 mean, 78% run into the 32 frame retry ceiling
+ *      esp32-79 cellar      31.8 mean, 100% run into it, never ACKed once in 1033 bursts
+ *
+ * so the cellar entry costs ~32 retries * 1.12ms = ~35ms of transmit airtime on EVERY command,
+ * and a single radio is deaf for the duration. the status round trip over the same window is
+ * p50 26ms / p90 46ms / max 71ms against a BEEP_SPIKE_PULSE_WIDTH of 30ms - the chirp IS the whole
+ * budget for a gapless status tone, and that burst is most of what eats it. RTT tracks burst
+ * length almost linearly: 1-2 frames -> 6.7ms mean, 25-32 frames -> 40.5ms mean.
+ *
+ * only entries that never answer belong here. esp32-75 stays in despite its 78%: it is a real
+ * bench gateway, it does win the race back sometimes, and dropping it would change the system
+ * under test rather than the measurement of it.
+ */
+//#define ESPNOW_BENCH_DROP_UNREACHABLE     // per project, NOT here - see above
+
 EventGroupHandle_t espnow_sol_events;
 _u8 espnow_gateway_mac[][ESP_NOW_ETH_ALEN] = {
 
-    ESPNOW_GW_MAC,          // 0 default as of: esp32-44 #1 botland (media room) / esp32-37 #3 botland (host14 garage)
+    ESPNOW_GW_MAC,          // site A: esp32-44 #1 botland "mediaroom"  <== still active but DEPRECATED (as of 2026_09_14) / migrating to esp32-86/87
+                            // site A: esp32-87 esp32-s3-eth wave share R8MTH4 16MB Flash/ 8MB PSRAM "mediaroom" <= active since 2026_09_14 
+                            // site B: esp32-37 #3 botland "host14 garage"
 
 #if defined(MULTI_ANTENNA_GATEWAY)
-#if ESP32_(4446) || ESP32_(4448)
-    ESPNOW_001_GW_MAC,      //  esp32-41 #2 botland (test espnow gateway) left
+    ESPNOW_DUT_GW_MAC,      //  the gateway under test - see ESPNOW_DUT_GW_MAC above
+    ESPNOW_008_GW_MAC,      //  esp32-77 ultra_espnow_gw/ wifi  esp32-s3-eth wave share R8MTH4 16MB Flash/ 8MB PSRAM "study"         <== control, never changes
+#if !defined(ESPNOW_BENCH_DROP_UNREACHABLE)
+    ESPNOW_009_GW_MAC,      //  esp32-79 ultra_espnow_gw/ wifi  esp32-s3-eth wave share R8MTH4 16MB Flash/ 8MB PSRAM "cellar"        <== control, never changes
 #endif
-//  ESPNOW_002_GW_MAC,      //  esp32-69 #4 botland (test espnow gateway) right
-//  ESPNOW_003_GW_MAC,      //  an ESP32 softAP wt32-eth01 v1.4 wireless tag (TENSTAR)    <== TMP STAIRCASE
-//  ESPNOW_004_GW_MAC,      //  an ESP32 softAP wt32-eth01 v1.4 wireless tag (TENSTAR)
-//  ESPNOW_005_GW_MAC,      //  esp32-61 esp32-eth01 v1.4 V1781
-//  ESPNOW_006_GW_MAC,      //  esp32-65 esp32-eth01 v1.4 V1781 BOOT-PIN
-#if !ESP32_(4446) && !ESP32_(4448)
-    ESPNOW_007_GW_MAC,      //  esp32-75 esp32-s3-eth wave share                   <== schalf-xi
-    ESPNOW_008_GW_MAC,      //  esp32-77 esp32-s3-eth wave share                   <== a-zi
-    ESPNOW_009_GW_MAC,      //  esp32-79 esp32-s3-eth wave share                   <== cellar
-#endif
-//  ESPNOW_010_GW_MAC,      //  esp32-81 esp32-s3-eth wave share 
 #endif  
 
 };
@@ -2343,11 +2470,11 @@ espnow_recv_cb(const esp_now_recv_info_t *info,
      *    there is no common sync point yet at this stage of processing the cmds
      */
     if (!espnow_sol_pkt.len) {          // check buffer free first to avoid mutual overwrites
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
         len = _min(len, _SZ(espnow_sol_pkt.data) - 1);  // allow for appending a zero char
-#else   // if defined(CONFIG_ARDUINO_VARIANT)
+#else   // if defined(MCOM_ARD)
         len = min(len, _SZ(espnow_sol_pkt.data) - 1);   // allow for appending a zero char
-#endif  // if defined(CONFIG_ARDUINO_VARIANT)
+#endif  // if defined(MCOM_ARD)
 
         memcpy(espnow_sol_pkt.data, data, len);
         espnow_sol_pkt.len = len;
@@ -2383,6 +2510,17 @@ do { \
 QueueHandle_t espnow_unsol_que;    // running at _SZ(espnow_packet_t) size
 
 /*
+ * commands lost because espnow_unsol_que was full when one arrived.
+ *
+ * a drop here is INVISIBLE otherwise - it looks exactly like a command that never made it over
+ * the air, which is the one thing the multi-antenna setup cannot distinguish on its own. the
+ * gateway reports this in @state (see crash_misc_str() in ultra_espnow_gw.c).
+ *
+ * single producer - the recv callback - so a plain ++ needs no protection.
+ */
+_u32 espnow_unsol_dropped;
+
+/*
  * this is for unsolicited packets e.g. cmds
  */
 void
@@ -2391,18 +2529,23 @@ espnow_recv_cb(const esp_now_recv_info_t *info,
 {
     espnow_packet_t espnow_unsol_pkt;
 
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
     len = _min(len, _SZ(espnow_unsol_pkt.data));
-#else   // if defined(CONFIG_ARDUINO_VARIANT)
+#else   // if defined(MCOM_ARD)
     len = min(len, _SZ(espnow_unsol_pkt.data));
-#endif  // if defined(CONFIG_ARDUINO_VARIANT)
+#endif  // if defined(MCOM_ARD)
 
     memcpy(espnow_unsol_pkt.data, data, len);
     espnow_unsol_pkt.len = len;
     espnow_unsol_pkt.rssi = info->rx_ctrl->rssi;
     memcpy(espnow_unsol_pkt.src_mac, info->src_addr, ESP_NOW_ETH_ALEN);
     memcpy(espnow_unsol_pkt.dst_mac, info->des_addr, ESP_NOW_ETH_ALEN);
-    xQueueSendFromISR(espnow_unsol_que, &espnow_unsol_pkt, 0);
+#if defined(GW_TIMING_TRACE)
+    espnow_unsol_pkt.t_rx = esp_timer_get_time();   // ISR safe, reads the hw timer
+#endif
+    if (xQueueSendFromISR(espnow_unsol_que, &espnow_unsol_pkt, 0) != pdPASS) {
+        ++espnow_unsol_dropped;     // queue full: the command is GONE, and silently so before this
+    }
 }
 
 #else   // if defined(ESPNOW_INITIATOR)/ elif defined(ESPNOW_TARGET)
@@ -2460,7 +2603,7 @@ do { \
 /* ---^^^--- ESPNOW section ---^^^----------------------------------------------------------------------------- */
 
 
-#if defined(CONFIG_ARDUINO_VARIANT)
+#if defined(MCOM_ARD)
 /* ---vvv--- arduino specific ---vvv--------------------------------------------------------------------------- */
 /* ---vvv--- WiFi section (ard runtime) ---vvv----------------------------------------------------------------- */
 
@@ -2577,7 +2720,7 @@ TP05
      * mega hack:
      * as we know that:
      *  - at the time of wait4wifi() function init_3rd() has already passed ssid_last is already setup properly
-     *  - ACCESSPOINT_CONNECT_BOOSTER relevant for the phone hotspot (== TETHER_SSID) even if DHCP disabled
+     *  - ACCESSPOINT_CONNECT_BOOSTER relevant for host6 (== TETHER_SSID) even if DHCP disabled
      *  - disable for all others to save time
      */
 //#define ACCESSPOINT_CONNECT_BOOSTER_DELAY 1             // stat: 1101
@@ -2673,7 +2816,7 @@ WiFiClient target;
  *    status nok                    "err#5"   5     0101
  */
 _i32
-mysend(_i8p cmd, _i8p host, _u16 port, _i8p *statmsg)
+mysend(_i8cp cmd, _i8cp host, _u16 port, _i8cp *statmsg)
 {
 TP05
 
@@ -3049,7 +3192,7 @@ TP05
 }
 
 _i32
-init_3rd(_u8 ssid, _i8p prg) 
+init_3rd(_u8 ssid, _i8cp prg) 
 {
 TP05
     WiFi.onEvent(WiFiEvent);    // register all WiFi events
@@ -3253,7 +3396,7 @@ dump_some(WIFI_MODE_STA, __func__);
 /* ---^^^--- arduino specific ---^^^--------------------------------------------------------------------------- */
 
 
-#else   // defined(CONFIG_ARDUINO_VARIANT)
+#else   // defined(MCOM_ARD)
 
 //
 // for OTA over WiFi to work WIFI_INITIATOR must be defined. 
@@ -3294,7 +3437,7 @@ u32_t ipaddr_addr(const char *cp) {     @param cp IP address in ascii representa
 
 IP address native 32bit data:
 
-PR05("ip.ip: %lx\n", event->ip_info.ip.addr);   // ip.ip a.b.c.d == ip.ip 0x0449a8c0
+PR05("ip.ip: %lx\n", event->ip_info.ip.addr);   // ip.ip 192.168.0.25 == ip.ip 0x0449a8c0
 */
 
 RTC_DATA_ATTR _i8 cached_ip[16];        // assigned per IPSTR == 16 chars
@@ -3334,7 +3477,7 @@ ur_handler_on_wifi_disconnect(void *arg, esp_event_base_t event_base,
 TP05
     /*
      * the reason code IS the story on an association failure, and it was never printed. these
-     * fire on ~2 of 24 wakeups against the hostapd AP and cost 0.6..3.0s of w_link_up
+     * fire on ~2 of 24 wakeups against the BPI-R3 and cost 0.6..3.0s of w_link_up
      */
     {
         wifi_event_sta_disconnected_t *ev = (wifi_event_sta_disconnected_t *)event_data;
@@ -3941,7 +4084,7 @@ TP05
      * esp_wifi_disconnect() only QUEUES the deauth; ur_wifi_stop() right behind it kills the
      * radio. if the frame never makes it out, the AP keeps a stale association for us and answers
      * our next wakeup with deauth reason 2 AUTH_EXPIRE - measured at 4..7% of cycles against the
-     * a hostapd AP, each costing a fixed ~2.8s of w_link_up. give the frame a moment to leave
+     * BPI-R3, each costing a fixed ~2.8s of w_link_up. give the frame a moment to leave
      */
     esp_rom_delay_us(WIFI_DEAUTH_SETTLE_US);
 #endif
@@ -4001,7 +4144,7 @@ TP05
 #define WIFI_PQCMD_TIMEOUT 1000     // x 1ms == 1s (account for server busy cmd timeout)
 /*
  * per-attempt SYN timeout for the fast connect retry - see the big comment at the connect().
- * must stay well under WIFI_PQCMD_TIMEOUT so several tries fit inside it. against the hostapd AP the
+ * must stay well under WIFI_PQCMD_TIMEOUT so several tries fit inside it. against the BPI-R3 the
  * AP needs ~200ms before it carries the first frame, so expect a handful of tries there and
  * exactly one against an accesspoint that does not drop it
  */
@@ -4027,12 +4170,58 @@ RTC_DATA_ATTR _u8 cached_target_ssid;
 /*
  * a host zero string denotes the cmd wants to be sent via ESPNOW (and WiFi otherwise)
  */
+/*
+ * mysend() keeps its whole working set in FILE SCOPE globals: espnow_sol_pkt (which is both the
+ * tcp send AND the receive buffer, and is held across the entire transaction), _pmatch[]/_regex
+ * for the status parse, plus the function level static stat_misc_buf[] below. that was safe for
+ * as long as exactly one task ever called it.
+ *
+ * ultra_espnow_gw has TWO callers. espnow_unsol_task forwards a non-pre-acked command inline;
+ * pq_task forwards a pre-acked one asynchronously. drive both at once and they interleave inside
+ * this function.
+ *
+ * measured on esp32-44, 2026_08_30: with both paths live, the gateway put pq_task's raw buffer on
+ * a socket espnow_unsol_task had opened, truncated mid-string - the target logged the command as
+ * "e45.p80 ^host2", which no single path can construct (espnow_unsol_task strips the host out
+ * during parsing, so ^host2 cannot appear in what it sends). twice in three minutes. the device
+ * then panicked, having been up 13.3 hours under single path load, and the panic was NOT at any
+ * instrumented ESP_ERROR_CHECK site - i.e. a memory fault, which is what a _pmatch offset pair
+ * computed across two different strings does to the strncat() below.
+ *
+ * so serialise the function. both callers are I/O bound, and the pre-ack has already gone back to
+ * the remote before pq_task ever runs, so the wait is not observable from outside.
+ *
+ * the handle is created in init_1st(). projects that never call init_1st() leave it null and the
+ * macros below are then no-ops - behaviour identical to before this change, which keeps every
+ * single caller project exactly as it was.
+ */
+#if defined(GW_TIMING_TRACE)
+/*
+ * phase split of the last mysend() TCP transaction, us. file scope is safe here for exactly the
+ * reason the mutex below exists: MYSEND_LOCK serialises the whole function, so there is only ever
+ * one transaction in flight. reset per call - several "goto out1" paths leave phases unreached,
+ * and a stale value from the previous command would read as a plausible measurement
+ */
+_u32 gw_t_connect, gw_t_write, gw_t_read;
+#endif
+
+SemaphoreHandle_t mysend_lock = 0;
+
+#define MYSEND_LOCK()   do { if (mysend_lock) xSemaphoreTake(mysend_lock, portMAX_DELAY); } while (0)
+#define MYSEND_UNLOCK() do { if (mysend_lock) xSemaphoreGive(mysend_lock); } while (0)
+
 _i32
-mysend(_i8p cmd, _i8p host, _u16 port, _i8p *statmsg)
+mysend(_i8cp cmd, _i8cp host, _u16 port, _i8p *statmsg)
 {
 TP05
     _i32 stat, err;
     _i32 s = -1;    // socket fd needs no close per default
+
+    /*
+     * taken here and released at the single exit below. every "goto out1" in between passes
+     * through that exit, so there is exactly one take and one give on every path
+     */
+    MYSEND_LOCK();
 
 #if defined(ESPNOW_INITIATOR)
 
@@ -4046,8 +4235,10 @@ if (isESPNOW(host)) {
      *
      * in case of NON-pre-acked cmds the serial-no is filtered on the final target (simu host2 bell here). e.g.
      *      "no ^host2.example.com:8899"
-     *   the target responds with STATUS_MISC_DUPLICATE for duplicates which allows ultra_espnow_gw.c/ espnow_unsol_task()
-     *   to filter with if (!strcmp(statmsg, "252")) {
+     *   the target executes the first copy and drops the rest, answering a duplicate with the SAME
+     *   benign status as the real execution (bell: accept_close(.., 0), "may not send this as first
+     *   status") - so whichever of the three gateways' replies reaches the initiator first carries
+     *   the same thing, and there is nothing to filter here. verified on bell 2026_09_15
      *
      * in case of pre-acked cmds the serial-no is filtered on esp32_decode/tcp_server
      *      "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^host2.example.com:8899 ^"
@@ -4095,17 +4286,29 @@ if (isESPNOW(host)) {
      * 
      * this ensures only valid status data is queued if xEventGroupWaitBits() triggers
      */
-    for (_u32 i = 0; i < NUM_ESPNOW_GATEWAYS; ++i) {
-        ESP_ERROR_CHECK(esp_now_send(espnow_gateway_mac[i], (_u8p)cmd, strlen(cmd) + 1)); // copy terminating 0
-        PR02("esp_now_send %d " MACSTR "\n", i, MAC2STR(espnow_gateway_mac[i]));
+    EventBits_t bits;
+    for (_i32 tries = 0; ; ++tries) {           // signed: with the default 0, >= would be always true
+        for (_u32 i = 0; i < NUM_ESPNOW_GATEWAYS; ++i) {
+            ESP_ERROR_CHECK(esp_now_send(espnow_gateway_mac[i], (_u8p)cmd, strlen(cmd) + 1)); // copy terminating 0
+            PR02("esp_now_send %d " MACSTR "\n", i, MAC2STR(espnow_gateway_mac[i]));
+        }
+        bits = xEventGroupWaitBits(
+            espnow_sol_events,
+            ESPNOW_EVENT_RESPONSE_MASK,
+            pdTRUE,
+            pdFALSE,
+            pdMS_TO_TICKS(ESPNOW_STATUS_TIMEOUT)
+        );
+        if ((bits & ESPNOW_EVENT_RESPONSE_MASK) || tries >= ESPNOW_RESEND_UNANSWERED)
+            break;
+        /*
+         * not one gateway answered: send it again, unchanged. a copy that did get through the
+         * first time is answered as a duplicate with the same status, so nothing runs twice
+         */
+        PR01("espnow stat: no answer, sending [%s] again\n", cmd);
+        espnow_sol_pkt.len = 0;                 // indicate buffer free for cb routines
+        xEventGroupClearBits(espnow_sol_events, ESPNOW_EVENT_RESPONSE_MASK);
     }
-    EventBits_t bits = xEventGroupWaitBits(
-        espnow_sol_events,
-        ESPNOW_EVENT_RESPONSE_MASK,
-        pdTRUE,
-        pdFALSE,
-        pdMS_TO_TICKS(ESPNOW_STATUS_TIMEOUT)
-    );
 
     /*
      * the status received contains a trailing '\n' and is sent without terminating null
@@ -4118,6 +4321,7 @@ if (isESPNOW(host)) {
         //  for non-pre-acked cmds the target application must handle this
     } else {
         PR01("espnow stat: timeout\n");
+        beep(BEEP_INFO, 1);     // provide some accoustic feedback
     }
 } else {
 
@@ -4259,6 +4463,10 @@ if (isESPNOW(host)) {
     }
 #endif  // CACHE_TARGET_IP
     WTPROF("w_dns");
+#if defined(GW_TIMING_TRACE)
+    gw_t_connect = gw_t_write = gw_t_read = 0;
+    _u64 gw_phase = esp_timer_get_time();
+#endif
     last = tstamp();
     _u32 conn_try = 0;
     while (1) {
@@ -4276,7 +4484,7 @@ if (isESPNOW(host)) {
         /*
          * FAST CONNECT RETRY (2026_08_15) - do NOT go back to a plain blocking connect().
          *
-         * measured against a hostapd AP: the FIRST data frame after association is dropped
+         * measured against a BPI-R3/hostapd AP: the FIRST data frame after association is dropped
          * (the AP needs ~200ms before it carries it, see LINK_SETTLE_US). a blocking connect()
          * then sits out lwIPs own SYN retransmit, whose initial RTO is 3 tcp_slowtmr ticks of
          * 500ms - measured as w_tcp_connect 1,246,013..1,389,561us on EVERY cycle.
@@ -4389,6 +4597,9 @@ if (isESPNOW(host)) {
     }
     if (res) freeaddrinfo(res);
     WTPROF("w_tcp_connect");
+#if defined(GW_TIMING_TRACE)
+    { _u64 now = esp_timer_get_time(); gw_t_connect = (_u32)(now - gw_phase); gw_phase = now; }
+#endif
 
     /*
      * IMPORTANT:
@@ -4407,6 +4618,9 @@ if (isESPNOW(host)) {
         goto out1;
     }
     WTPROF("w_tcp_write");
+#if defined(GW_TIMING_TRACE)
+    { _u64 now = esp_timer_get_time(); gw_t_write = (_u32)(now - gw_phase); gw_phase = now; }
+#endif
     // bail if no status received
     struct timeval receiving_timeout;
     receiving_timeout.tv_sec = WIFI_STATUS_TIMEOUT;
@@ -4416,8 +4630,18 @@ if (isESPNOW(host)) {
         stat = 3;
         goto out1;
     }
-    espnow_sol_pkt.len = read(s, espnow_sol_pkt.data, _SZ(espnow_sol_pkt.data) - 1);    // allow for appending a zero char
+    err = read(s, espnow_sol_pkt.data, _SZ(espnow_sol_pkt.data) - 1);      // allow for appending a zero char
+    if (err < 0) {
+        PR00("... read failed\n");
+        stat = 3;
+        goto out1;
+    } else {
+        espnow_sol_pkt.len = err;
+    }
     WTPROF("w_tcp_read");
+#if defined(GW_TIMING_TRACE)
+    { _u64 now = esp_timer_get_time(); gw_t_read = (_u32)(now - gw_phase); gw_phase = now; }
+#endif
 
 #if defined(CACHE_GW_MAC_ACTIVE)
     /*
@@ -4485,50 +4709,12 @@ if (isESPNOW(host)) {
             regerror(err, &_regex, _buf, _SZ(_buf));
             PR02("%s\n", _buf);
             stat = 4;
-#if defined(USE_ANCIENT_VERSION)
-        /*
-         * this version:
-         *  - leaves good status (==0) + STAT_MISC field as is
-         *  - overwrites bad status (==1) with 5 and overwrites STAT_MISC with err#5
-         */
-        } else if (strncmp("0", (_i8p)espnow_sol_pkt.data + _pmatch[STAT_STAT].rm_so, 1)) {
-            PR02("status failed\n");
-            stat = 5;
-        } else {
-            // valid res
-            if (statmsg) {
-                strncat(stat_misc_buf, (_i8p)espnow_sol_pkt.data + _pmatch[STAT_MISC].rm_so, _pmatch[STAT_MISC].rm_eo - _pmatch[STAT_MISC].rm_so);
-                *statmsg = stat_misc_buf;                                      
-            }
-            stat = 0;
-        }
-    } else {
-        PR05("espnow_sol_pkt.len: %d\n", espnow_sol_pkt.len);
-#if DEBUG > 4
-        if (espnow_sol_pkt.len > 0) {
-            PR00("espnow_sol_pkt.data[espnow_sol_pkt.len - 1]: '%c'\n", espnow_sol_pkt.data[espnow_sol_pkt.len - 1]);
-        }
-#endif
-        PR00("invalid read count and/or unterminated data\n");
-        stat = 3;
-    }
-out1:
-    if (s >= 0) close(s);
-    if (stat) {
-        if (statmsg) *statmsg = _err[stat];
-        beep(BEEP_ERR, 3);
-        PR02("statmsg: %s\n", _err[stat]);
-    } else {
-        beep(BEEP_OK, 1);
-    }
-    return stat;
-#else   // defined(USE_ANCIENT_VERSION)
-        /*
-         * this version:
-         *  - leaves good status (==0) + STAT_MISC field as is
-         *  - overwrites bad status (==1) with 5 and leaves STAT_MISC as is
-         * to keep fail information in STAT_MISC available for further evaluation
-         */
+            /*
+             * this version:
+             *  - leaves good status (==0) + STAT_MISC field as is
+             *  - overwrites bad status (==1) with 5 and leaves STAT_MISC as is
+             * to keep fail information in STAT_MISC available for further evaluation
+             */
         } else if (strncmp("0", (_i8p)espnow_sol_pkt.data + _pmatch[STAT_STAT].rm_so, 1)) {
             PR02("status failed\n");
             stat = 5;
@@ -4553,15 +4739,15 @@ out1:
         beep(BEEP_OK, 1);
     } else if (stat == 5) {
         if (!*stat_misc_buf) strcpy(stat_misc_buf, _err[stat]);
-        beep(BEEP_ERR, 3);
+        beep(BEEP_ERR, stat);
     } else {
         strcpy(stat_misc_buf, _err[stat]);
-        beep(BEEP_ERR, 3);
+        beep(BEEP_ERR, stat);
     }
     PR02("statmsg: %s\n", stat_misc_buf);
     if (statmsg) *statmsg = stat_misc_buf;
+    MYSEND_UNLOCK();
     return stat;
-#endif  // defined(USE_ANCIENT_VERSION)
 }
 #endif  // if defined(WIFI_INITIATOR) || defined(ESPNOW_INITIATOR) || defined(ETH_INITIATOR)
 /* ---^^^--- cmd to status (idf mysend) ---^^^----------------------------------------------------------------- */
@@ -4620,10 +4806,29 @@ _i32
 init_1st()
 {
 TP05
-    ESP_ERROR_CHECK(nvs_flash_init());
+    /*
+     * the recovery initArduino() ran ahead of every ard sketch: a partition without a free page, or one
+     * written by a newer nvs format, is erased and initialized once more. any other error, and a second
+     * failure, still aborts. without it an ard device updated OTA onto an idf image, or one whose nvs
+     * filled up, aborts here and reboots into the same abort. the erase costs what nvs held: the wifi
+     * cfg and pmk cache, skip_fw_update
+     */
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        PR00("nvs_flash_init() failed: 0x%x -> erasing nvs\n", err);
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ++bootCount;
+#if defined(WIFI_INITIATOR) || defined(ESPNOW_INITIATOR) || defined(ETH_INITIATOR)
+    /*
+     * before any task exists, so no race to create it. see the comment at mysend()
+     */
+    if (!mysend_lock) mysend_lock = xSemaphoreCreateMutex();
+#endif
     return 0;
 }
 
@@ -4792,6 +4997,6 @@ do { \
 /* ---^^^--- ESPNOW ur_connect() replacement initialization (idf variant) ---^^^------------------------------- */
 /* ---^^^--- idf specific ---^^^------------------------------------------------------------------------------- */
 
-#endif    // defined(CONFIG_ARDUINO_VARIANT)
+#endif    // defined(MCOM_ARD)
 #endif    // !defined(_MCOM_MINIMAL_)
 

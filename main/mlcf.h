@@ -40,6 +40,7 @@ typedef long long      _i64;
 typedef long           _i64;
 #endif
 typedef _i8           *_i8p;
+typedef const _i8     *_i8cp;   // pointer to const chars: what a string literal is under -Wwrite-strings
 typedef _i16          *_i16p;
 typedef _i32          *_i32p;
 typedef _i64          *_i64p;
@@ -63,13 +64,6 @@ typedef _i64          *_i64p;
 
 #define CDEF2STR_HELPER(x) #x
 #define CDEF2STR(x) CDEF2STR_HELPER(x)
-
-//
-// knock off some b........ cc/c++ warning terrorism like:
-//
-
-//  warning: ISO C++ forbids converting a string constant to '_i8p' {aka 'char*'} [-Wwrite-strings]
-#define _w1(a) ((_i8p)(a))
 
 //
 // a neat debug foundation [ see fct4_glue.c how to use ]

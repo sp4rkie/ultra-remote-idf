@@ -79,7 +79,26 @@ how to build
         . ~/esp/esp-idf/export.sh
         git clone git@github.com:sp4rkie/ultra-remote-idf
         cd ultra-remote-idf
-        idf.py -DCMAKE_C_FLAGS='-DESP32_2' flash monitor
+
+- the firmware is built for one device at a time. `main/build_id.h` says which, and the
+  `#if ESP32_(n)` blocks in `main/ultra_remote.c` hold each device's keys and settings - pick the
+  block that matches your board, or add one. for device 2, the tester:
+
+        // main/build_id.h
+        #pragma once
+        #define PROJECT "ultra-remote-idf"
+        #define ENTITY  2
+        #define SERNO   "0001"
+        #define MYDATE  "26-10-01"
+
+- then build and flash with that file forced into every compile:
+
+        OPTS_="-include $PWD/main/build_id.h" idf.py flash monitor
+
+- `OPTS_` is read when cmake first configures the build: after changing it, remove `build/`
+- `SERNO` is the firmware version the OTA update check compares (hex), `MYDATE` a free label
+- fill in your own access points and target hosts in `main/mcfg.h`: the values shipped there are
+  placeholders, not working credentials
 
 debug protocol output as of current git
 ---------------------------------------

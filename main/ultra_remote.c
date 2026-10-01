@@ -99,7 +99,7 @@
 
 // -------------------------------------------------------------------------------------
 // --- 4 button (2nd) remote control    
-// esp32-36                  xx:xx:xx:xx:xx:xx   ultra_remote_4k/       4 button (2nd) remote control       (urc-nr 14)
+// esp32-36                  aa:bb:cc:00:00:02   ultra_remote_4k/       4 button (2nd) remote control       (urc-nr 14)
 // esp32-70                                      ultra_remote_4m/       4 button (3rd) remote control       (urc-nr 16)
 // esp32-71                                      ultra_remote_4n/       4 button (4th) remote control       (urc-nr 17)
 // esp32-72                                      ultra_remote_4o/       4 button (5th) remote control       (urc-nr 18)
@@ -116,7 +116,7 @@
 #   define VBAT_ADC1_ATTENUATION ADC_ATTEN_DB_6  // use this for 1:1 resistor divider over VBAT (3.3V / 2 == 1650 < 1884mv)
 
 // -------------------------------------------------------------------------------------
-#elif ESP32_(45)         // esp32-45 a.b.c.d                       S3 general tester STAR s3-s-mini ESP32S3FH4R2
+#elif ESP32_(45)         // esp32-45 192.168.0.22                       S3 general tester STAR s3-s-mini ESP32S3FH4R2
 #   define DEBUG  1
 #   define BUZZER 6
 // only one or none!
@@ -128,33 +128,10 @@
 #define SUPPORT_MENU_SWITCHING
 #define LIGHT_SLEEP_TIMEOUT 600000000             // 600s resort to deep sleep after this
 
-// experimentally via wireless tag
-//#define OTA_SSID ROTA2I_SSID
-//#define ESPNOW_CHANNEL ESPNOW_ROTA2I_CHANNEL
-//#define ESPNOW_GW_MAC ESPNOW_002_GW_MAC
-
 // S3 SUPERMINI specials
-#define ATTENTION_REDUCED_WIFI_POWER 44     // EVEN LOWER DOOR AREA APPEARS TO WORK!! <= STARTING 2026_06_30
-
-/* 
-    for [ simplified keyboard connection (single switch) on esp32-45 (STAR) ] use:
-
-    pin [4] on the left, pin [3] on the right (counted from top) to gain 2-char cmd [zj] on esp(45)
-
-        ----1      1----
-        ----2      2----
-        ----3      3---- X-
-     -X ----4       ----
-        ----        ----
-*/
-
-// esp32-46 ultra_remote_14l/ multi key remote control s3-s-mini (urc-nr 15)  1st. ACCU
-// esp32-82 ultra_remote_4p/  multi key remote control s3-s-mini (urc-nr 19)  2nd. ACCU
-// esp32-83 ultra_remote_4q/  multi key remote control s3-s-mini (urc-nr 20)  3rd. ACCU
-// esp32-84 ultra_remote_4r/  multi key remote control s3-s-mini (urc-nr 21)  4th. ACCU
-
-//#define DEBUG_TIMER_WAKEUP 1000   // must also define KEY_BOARD_SIMU_KEY
-#define KEY_BOARD_SIMU_KEY 16
+// UPDATE as of 2026_08_31:
+// no longer defined/ see comment in ultra_remote_mini for this
+//#define ATTENTION_REDUCED_WIFI_POWER 44   // EVEN LOWER DOOR AREA APPEARS TO WORK!! <= STARTING 2026_06_30
 
 /*
  * accu patrol on the tester - same feature as on the ACCU class below, only with an interval you
@@ -165,9 +142,66 @@
 #define VBAT_PATROL_INTERVAL        60      // s, against 5 * 3600 on the real accu devices
 #define VBAT_PATROL_CRITICAL      3200      // mV, unloaded. see the ACCU class below
 
+/* 
+ *  for [ simplified keyboard connection (single switch) on esp32-45 (STAR) ] use:
+ *
+ *  pin [4] on the left, pin [3] on the right (counted from top) to gain 2-char cmd [zj] on esp(45)
+ *
+ *      ----1      1----
+ *      ----2      2----
+ *      ----3      3---- X-
+ *   -X ----4       ----
+ *      ----        ----
+ */
+/*
+ * audible-gap bench 2026_09_15: esp32-45 has no hardware keys (automated test board), so the
+ * press is simulated. this drives the full process_input() path - chirp, mysend(), status, status
+ * tone - once per DEBUG_TIMER_WAKEUP ms, which is the entire path the ear judges.
+ *
+ * KEY_BOARD_SIMU_KEY is a RAW key 1..16; process_input() then adds dynamic_cmd_offset * 16, so
+ * which row of key_raw2cmd[] actually fires depends on the menu the device is left in. read it
+ * back off the serial - PR01("espnow cmd: ...") prints the command text itself, so there is no
+ * need to work the offset out in advance. with the "2 stationary test" menu selected, raw 16 is
+ * the oa/od row (ldoor assert + deassert, non-pre-acked, straight to bell on host3) - the path
+ * that bypasses host1 entirely and so tells us whether tcp_server is involved at all.
+ *
+ * REVERT BOTH BEFORE THIS BOARD GOES BACK TO ANYTHING ELSE: with DEBUG_TIMER_WAKEUP the remote
+ * wakes on a timer instead of on its keys, and VBAT_PATROL_INTERVAL silently disappears
+ */
+/*
+ * ENTITY SCOPED ON PURPOSE. this lived at file scope until 2026_09_15, ahead of the entity #if
+ * chain, which silently applied it to EVERY ultra_remote entity - and for a remote that can
+ * actually reach the cellar, dropping esp32-79 from espnow_gateway_mac[] is a functional loss,
+ * not a bench tweak. it belongs to esp32-45 alone: an S3 SUPERMINI cannot reach the cellar, so
+ * the entry is pure dead weight here - 32 retries, ~35ms of transmit airtime, never once ACKed
+ * in 1033 bursts. measurement above espnow_gateway_mac[] in mcom.h
+ */
+#define ESPNOW_BENCH_DROP_UNREACHABLE
+
+/*
+ * bench defines, stood down 2026_09_15 after the audible-gap campaign. re-arm all four together
+ * to drive simulated presses again (esp32-45 has no hardware keys):
+ *
+ *   DEBUG_TIMER_WAKEUP 1000         ms between simulated presses
+ *   DEBUG_TIMER_WAKEUP_KEEP_BUZZER  keep the chirp - it is the 30ms reference being measured
+ *   DEBUG_TIMER_WAKEUP_MENU 2       "2 stationary test" (see the note at dynamic_cmd_offset)
+ *   KEY_BOARD_SIMU_KEY <row>        09 = ii, 10 = ii ^ (pre-acked), 16 = oa/od via bell on host3
+ *
+ * NOTE while armed, VBAT_PATROL_INTERVAL above is suppressed - the two share the deep sleep timer
+ */
+//#define DEBUG_TIMER_WAKEUP 1000
+//#define DEBUG_TIMER_WAKEUP_KEEP_BUZZER
+//#define DEBUG_TIMER_WAKEUP_MENU 2
+/*
+ * ROW 12 - "no" + "od", both NOOPs on bell. THE SAFE ROW against the real bell on host3.
+ * row 16 pairs "oa" (CMD_ldoor_open_signal_assert) with "od" and ACTUATES the opener on every
+ * cycle - do not point a repeating bench at it, see ~/other/bell-test/README
+ */
+#define KEY_BOARD_SIMU_KEY 12
+
 // -------------------------------------------------------------------------------------
-#elif ENTITY_45_CLASS   // ESP32_(45) IMPLICITLY CAUGHT ABOVE
-#   define DEBUG  2        // TEMPORARY 2026_08_25 (was 1): PR02 needed to watch the esp32-46 dhcp/ARP fix. REVERT.
+#elif ENTITY_45_CLASS   // ACCU devices, ESP32_(45) IMPLICITLY CAUGHT ABOVE
+#   define DEBUG  1
 #   define BUZZER 6
 #   define RGB_GPIO_NUM 48
 
@@ -175,10 +209,11 @@
 #define VBAT_ADC1_ATTENUATION ADC_ATTEN_DB_12   // input range (with 1:1 voltage divider): USB: 2.49, BAT: 1.90
 #define SUPPORT_MENU_SWITCHING
 #define LIGHT_SLEEP_TIMEOUT 600000000             // 600s resort to deep sleep after this
-//#define LIGHT_SLEEP_TIMEOUT  20000000             // 20s/ debug
 
 // S3 SUPERMINI specials
-#define ATTENTION_REDUCED_WIFI_POWER 44  // EVEN LOWER DOOR AREA APPEARS TO WORK!! <= STARTING 2026_06_30
+// UPDATE as of 2026_08_31:
+// no longer defined/ see comment in ultra_remote_mini for this
+//#define ATTENTION_REDUCED_WIFI_POWER 44   // EVEN LOWER DOOR AREA APPEARS TO WORK!! <= STARTING 2026_06_30
 
 /*
  * these four are the accu (rechargeable LiPo) operated devices: they discharge whether they get
@@ -207,6 +242,10 @@
  *
  * measured UNLOADED (the patrol samples with the radio still down). 3500mV leaves room to still
  * get the alarm out and to charge before the cell takes damage - CHECK THIS AGAINST YOUR CELLS
+ *
+ *
+ * Li-Ion: 4,2V / 3,6V - 3,4V / 2,5 V
+ *
  */
 #define VBAT_PATROL_CRITICAL      3200      // mV, unloaded
 //#define VBAT_PATROL_CRITICAL      8000      // report all/ debug
@@ -227,7 +266,11 @@
 #endif
 
 #include "mlcf.h"
+#ifdef MCFG_LOCAL
 #include "mcfg_local.h"
+#else
+#include "mcfg.h"
+#endif
 // ===vvv================================= debug timer wakeup ================================vvv===
 /*
  * DEBUG_TIMER_WAKEUP: profiling aid. replaces the key press wakeup by a deep sleep timer so the
@@ -272,7 +315,26 @@
 #define SKIP_WIRELESS_OFF_BEFORE_DEEP_SLEEP
 
 #if defined(DEBUG_TIMER_WAKEUP)
+/*
+ * DEBUG_TIMER_WAKEUP_KEEP_BUZZER - keep the buzzer while simulating key presses.
+ *
+ * the undef below has two reasons (see above) and NEITHER holds for the audible-gap bench:
+ *
+ *  1. "the LEDC pulls current and time into the middle of what we are measuring" - true when the
+ *     thing measured is the wake -> cmd path. here the measurement IS the chirp: its
+ *     BEEP_SPIKE_PULSE_WIDTH of 30ms is the entire budget the status tone has to land inside, and
+ *     its LEDC runs concurrently with the send by construction. removing it removes the reference
+ *     the whole experiment is against, and it is not free either - ultra_remote_mini records the
+ *     buzzer lifting init by ~10ms (espnow cmd: 86 -> 96), so a no-buzzer build measures a
+ *     different system than the one the ear complained about
+ *  2. the ledc_set_freq() abort is C5 only; this is an S3 and mcom.h pins LEDC_USE_APB_CLK for it
+ *
+ * so it stays OFF by default - every other DEBUG_TIMER_WAKEUP user is profiling the wake path and
+ * wants the undef - and the gap bench asks for it explicitly
+ */
+#if !defined(DEBUG_TIMER_WAKEUP_KEEP_BUZZER)
 #   undef BUZZER                        // see above
+#endif
 #   define DEBUG_TPROF                  // profiling implies the stamps below
 
 // DEBUG_TIMER_WAKEUP requires definition of a key to simulate
@@ -290,6 +352,17 @@
 }
 #endif
 // ===^^^================================= debug timer wakeup ================================^^^===
+
+/*
+ * ESPNOW_RESEND_UNANSWERED (see mcom.h): esp32-46 loses the FIRST cmd after a wake - its
+ * transmissions in the first ~100ms after the radio starts are mostly undecodable, by gateways
+ * and sniffers alike. soak 2026_09_29: first cmd unanswered 52 of 703 wakes, second cmd 9 of 671,
+ * and in every one of those wakes that had a second cmd it got through, from the same spot 1s
+ * later. every other remote ~100%. so one repeat, with the same serial, costs 1s only when needed
+ */
+#if ESP32_(46)
+#define ESPNOW_RESEND_UNANSWERED 1
+#endif
 
 #include "mcom.h"
 
@@ -312,13 +385,13 @@
 #define TPROF_MAX 24
 
 _u32 tprof_time[TPROF_MAX];
-_i8p tprof_name[TPROF_MAX];
+_i8cp tprof_name[TPROF_MAX];
 _u8  tprof_cnt;
 
 #define TPROF(nam) \
 do { \
     if (tprof_cnt < TPROF_MAX) { \
-        tprof_name[tprof_cnt] = _w1(nam); \
+        tprof_name[tprof_cnt] = nam; \
         tprof_time[tprof_cnt++] = (_u32)esp_timer_get_time(); \
     } \
 } while (0)
@@ -403,7 +476,7 @@ _i32 my_sleep_mode_is_deep;
 
 typedef struct {
     _u8  accp;      // indx into accpts[] array
-    _i8p host;      // target host in ascii
+    _i8cp host;     // target host in ascii
     _u16 port;
 } access_target_str;
 
@@ -423,22 +496,18 @@ access_target[] = {
     { ROTA2I_SSID, RPI5_TARGET_HOST,    RPI5_TARGET_PORT },     // [  5 ]            static access to RPI5_TARGET via FASTACCPT
     { ROTA2I_SSID, RPID_TARGET_HOST,    RPID_TARGET_PORT },     // [  6 ]            static access to RPID_TARGET via FASTACCPT
     { ESPNOW_SSID, ESPNOW_TARGET_HOST,  ESPNOW_TARGET_PORT },   // [  7 ] [ in use ] static access to PROXY via ESPNOW
-    { ROTA2I_SSID, _w1("host2.example.com"),  RPID_TARGET_PORT },     // [  8 ]            static access to host2 via FASTACCPT
+    { ROTA2I_SSID, "host2.example.com",  RPID_TARGET_PORT },     // [  8 ]            static access to host2 via FASTACCPT
 };
 /* ---^^^--- access target multiplexer ---^^^--- */
 
 /* ---vvv--- KEY section ---vvv--- */
 
-//
-// - direct all C_PFX cmds to the C_PFX_SERVER in the first place as these cmds are not routable
-// - on C_PFX_SERVER the cmds get their C_PFX replaced as specified and now are routable as usual
-//
-#define C_PFX "2" 
-#define C_PFX_SERVER "localhost"    // more general version
+// prefix for menu selection commands
+#define M_PFX "2" 
 
 typedef struct {
-    _i8p cmd;   // opening ascii cmd/menu code (mostly implies auto close)
-    _i8p cmdClosing;   // closing ascii cmd/menu code (if not auto closed)
+    _i8cp cmd;  // opening ascii cmd/menu code (mostly implies auto close)
+    _i8cp cmdClosing;  // closing ascii cmd/menu code (if not auto closed)
 } raw2cmd_str;
 
 typedef struct {
@@ -451,6 +520,18 @@ typedef struct {
 #define MENU_SWITCH_RESCAN_SPACING    10    // defines the rescan rate to detect KEY_META press activity
 #define KEY_SCAN_SETTLE_US           100    // settle time in us between driving a SNS line low and reading the HOT lines
 #define MENU_SWITCH_ALLOW_DEBOUNCE    20    // in the hope signal stabilizes after that amount of time in ms
+
+//
+// list of interpreted key codes goes here
+//  (we skipped k + l to gain similar key codes on both 14 + 16 buttons URs)
+//
+#define KEY_CODE_MOBL_PLAY_MENU 0x07                // MENU key '2m'
+#define KEY_CODE_MOBL_DOOR_MENU 0x06                // MENU key '2o'
+#define KEY_CODE_META 0x02                          // META key '2p'
+
+#define CMD_KEY_OFFSET_BASE 1
+#define CMD_KEY_OFFSET_MULTIPLIER 16
+#define IS_MENU_KEY(key) ((key) <= CMD_KEY_OFFSET_MULTIPLIER)
 
 //
 // unfortunately UR-control must retain some minimal state after menu switch to
@@ -474,7 +555,25 @@ RTC_DATA_ATTR _u8 dynamic_access_target = AT_TETHER_to_KARRp;   // 2026_08_25 te
 RTC_DATA_ATTR _u8 dynamic_access_target = AT_ESPNOW_to_PROX;    // current menu selected (may not be zero)
 #endif
 #endif
-RTC_DATA_ATTR _u8 dynamic_cmd_offset = 0;                       // current cmd offset coming along with selected menu
+/*
+ * DEBUG_TIMER_WAKEUP_MENU - preselect the cmd menu for a simulated-press bench.
+ *
+ * dynamic_cmd_offset is RTC_DATA_ATTR, so it survives deep sleep but comes back as
+ * CMD_KEY_OFFSET_BASE (1) on the hard reset a flash ends with - and nothing in a
+ * DEBUG_TIMER_WAKEUP build ever presses a menu key to move it. so raw key 16 lands on menu 1
+ * ("1 stationary player", cmd "zh") rather than menu 2 ("2 stationary test"), where the
+ * ii / ii ^ / oa+od rows live.
+ *
+ * pairing offset 2 with the AT_ESPNOW_to_PROX default above is NOT an invented combination:
+ * key_raw2menu[] entry "12 b" is exactly { AT_ESPNOW_to_PROX, 2 }, i.e. what pressing that menu
+ * key by hand would set. keep the two consistent if this is ever pointed at another menu
+ */
+#if defined(DEBUG_TIMER_WAKEUP_MENU)
+RTC_DATA_ATTR _u8 dynamic_cmd_offset = DEBUG_TIMER_WAKEUP_MENU;
+#else
+RTC_DATA_ATTR _u8 dynamic_cmd_offset = CMD_KEY_OFFSET_BASE;     // current cmd offset coming along with selected menu
+                                                                // offsets into first excepted menu since 2026_09_10
+#endif
               _u8 _dynamic_access_target;                       // preliminary version of the above (until acknowledged by the server)
 
 #include "hal/gpio_ll.h"    // required for GPIO.in, GPIO.in1.val...
@@ -538,11 +637,11 @@ count_bits(_u32 v) {
 raw2cmd_str 
 key_raw2cmd[] = {
     { },                                                        // 00                 place holder (no key)
-//  { _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^host2.example.com:8888"), 0 },
-    { _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^"), 0 }, 
-//  { _w1("no"), 0 },                                           // 2026_08_16 fast connect retry test
-//  { _w1("zp"), 0 },                                           // pause // ### needs espdoor *NOT* running prior to use ###
-//  { _w1("no"), 0 },                                           // direct host2 access, needs bell running on S3 SUPER MINI: 
+//  { "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^host2.example.com:8888", 0 },
+    { "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^", 0 }, 
+//  { "no", 0 },                                           // 2026_08_16 fast connect retry test
+//  { "zp", 0 },                                           // pause // ### needs espdoor *NOT* running prior to use ###
+//  { "no", 0 },                                           // direct host2 access, needs bell running on S3 SUPER MINI: 
                                                                 // wifi/eth cmd: 73 no -> [host2.example.com:8899]
                                                                 // stat: 113 #[XX]#[0]#[0]#[xxx]#[0]#[0]              !!!
     //
@@ -556,15 +655,15 @@ key_raw2cmd[] = {
     // I_D_OPU     mp          do     
     // release     ic          od
     //
-//  { _w1("oa"), _w1("od") }, // ldoor open signal assert 
+//  { "oa", "od" }, // ldoor open signal assert 
 
     //
     // cmd direct access (requires port 8899)
     //
-//  { _w1("no"), 0 }, // 
-//  { _w1("np"), 0 }, // 
-//  { _w1("nq"), 0 }, // 
-//  { _w1("kp"), 0 }, // dual open ldoor + udoor (armed open variant) // ### needs espdoor running prior to use ###
+//  { "no", 0 }, // 
+//  { "np", 0 }, // 
+//  { "nq", 0 }, // 
+//  { "kp", 0 }, // dual open ldoor + udoor (armed open variant) // ### needs espdoor running prior to use ###
 
     //
     // running into menu change items will crash cause no such entries are defined for ESP32_(2)
@@ -624,7 +723,7 @@ TP05
 raw2cmd_str 
 key_raw2cmd[] = {
     { },                                            // 00                 place holder (no key)
-    { _w1("oa ^host3.example.com:8899"), _w1("od") },    // espnow cmd: 145 [oa ^host3.example.com:8899] len 21 -> gateway
+    { "oa ^host3.example.com:8899", "od ^host3.example.com:8899" },    // espnow cmd: 145 [oa ^host3.example.com:8899] len 21 -> gateway
 };
 
 void
@@ -684,14 +783,14 @@ raw2cmd_str
 key_raw2cmd[] = {
 #if ESP32_(11) || ESP32_(70)
     { },                                                                        // . . . .    00 na                   
-    { _w1("oa ^host3.example.com:8899"), _w1("od") },                                // . . . 1    01 (ldoor open)
-    { _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^"), 0 },                        // . . 1 .    02 (debug beep)                           
+    { "oa ^host3.example.com:8899", "od ^host3.example.com:8899" },                                // . . . 1    01 (ldoor open)
+    { "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^", 0 },                        // . . 1 .    02 (debug beep)                           
     { },                                                                        // . . 1 1    03 na                   
-    { _w1("vu ^"), 0 },                                                         // . 1 . .    04 (/home/toh/bin/access_door.breaker)
+    { "vu ^", 0 },                                                         // . 1 . .    04 (/home/toh/bin/access_door.breaker)
     { },                                                                        // . 1 . 1    05 na                   
     { },                                                                        // . 1 1 .    06 na                   
     { },                                                                        // . 1 1 1    07 na                   
-    { _w1("vy ^"), 0 },                                                         // 1 . . .    08 (/home/toh/bin/access_door leave)
+    { "vy ^", 0 },                                                         // 1 . . .    08 (/home/toh/bin/access_door leave)
     { },                                                                        // 1 . . 1    09 na                   
     { },                                                                        // 1 . 1 .    10 na                   
     { },                                                                        // 1 . 1 1    11 na                   
@@ -701,14 +800,14 @@ key_raw2cmd[] = {
     { },                                                                        // 1 1 1 1    15 na                   
 #elif ESP32_(34)                // usys garage
     { },                                                                        // . . . .    00 na                   
-    { _w1("@beep=garage_toggle0 ^"), 0 },                                       // . . . 1    01
-    { _w1("@beep=garage_toggle1 ^"), 0 },                                       // . . 1 .    02
+    { "@beep=garage_toggle0 ^", 0 },                                       // . . . 1    01
+    { "@beep=garage_toggle1 ^", 0 },                                       // . . 1 .    02
     { },                                                                        // . . 1 1    03 na                   
-    { _w1("@beep=garage_toggle2 ^"), 0 },                                       // . 1 . .    04 
+    { "@beep=garage_toggle2 ^", 0 },                                       // . 1 . .    04 
     { },                                                                        // . 1 . 1    05 na                   
     { },                                                                        // . 1 1 .    06 na                   
     { },                                                                        // . 1 1 1    07 na                   
-    { _w1("@beep=garage_toggle3 ^"), 0 },                                       // 1 . . .    08
+    { "@beep=garage_toggle3 ^", 0 },                                       // 1 . . .    08
     { },                                                                        // 1 . . 1    09 na                   
     { },                                                                        // 1 . 1 .    10 na                   
     { },                                                                        // 1 . 1 1    11 na                   
@@ -718,14 +817,14 @@ key_raw2cmd[] = {
     { },                                                                        // 1 1 1 1    15 na                   
 #else
     { },                                                                        // . . . .    00 na                   
-    { _w1("@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^"), 0 },                        // . . . 1    01
-    { _w1("@beep= f:1101 c:1 t:.05 p:.25 g:-20 ^"), 0 },                        // . . 1 .    02
+    { "@beep= f:1000 c:1 t:.05 p:.25 g:-20 ^", 0 },                        // . . . 1    01
+    { "@beep= f:1101 c:1 t:.05 p:.25 g:-20 ^", 0 },                        // . . 1 .    02
     { },                                                                        // . . 1 1    03 na                   
-    { _w1("@beep= f:1202 c:1 t:.05 p:.25 g:-20 ^"), 0 },                        // . 1 . .    04 
+    { "@beep= f:1202 c:1 t:.05 p:.25 g:-20 ^", 0 },                        // . 1 . .    04 
     { },                                                                        // . 1 . 1    05 na                   
     { },                                                                        // . 1 1 .    06 na                   
     { },                                                                        // . 1 1 1    07 na                   
-    { _w1("@beep= f:1303 c:1 t:.05 p:.25 g:-20 ^"), 0 },                        // 1 . . .    08
+    { "@beep= f:1303 c:1 t:.05 p:.25 g:-20 ^", 0 },                        // 1 . . .    08
     { },                                                                        // 1 . . 1    09 na                   
     { },                                                                        // 1 . 1 .    10 na                   
     { },                                                                        // 1 . 1 1    11 na                   
@@ -955,7 +1054,7 @@ code:
 
 #endif
 
-#if ESP32_(10)  // esp32-10 xx:xx:xx:xx:xx:xx ultra_remote_16b/ multi key remote control (urc-nr 2) the mother of all ultra_remotes
+#if ESP32_(10)  // esp32-10 aa:bb:cc:00:00:03 ultra_remote_16b/ multi key remote control (urc-nr 2) the mother of all ultra_remotes
 
 // make ancient ESP32_(10) compatible to the rest of the world
 // translate native raw key codes from ESP32_(10) to non-ESP32_(10) (standard) order
@@ -982,122 +1081,232 @@ _u8 tr_keys[] = {
 
 #endif  // ESP32_(10)
 
-//
-// list of interpreted key codes goes here
-//  (we skipped k + l to gain similar key codes on both 14 + 16 buttons URs)
-//
-#define KEY_CODE_MOBL_PLAY_MENU 0x07                // MENU key '2m'
-#define KEY_CODE_MOBL_DOOR_MENU 0x06                // MENU key '2o'
-#define KEY_CODE_META 0x02                          // META key '2p'
-
-#define CMD_KEY_OFFSET_BASE 1
-#define CMD_KEY_OFFSET_MULTIPLIER 16
-#define IS_MENU_KEY(key) ((key) <= CMD_KEY_OFFSET_MULTIPLIER)
-
-//
-// for this to work match key_raw2cmd[] with map_keys() on p-server/ ultra_remote.c
-//
+/*
+ * 16  12          2a 2b                                      
+ * 15  11          2c 2d                                     
+ * 14  10          2e 2f                                    
+ * 13   9    =>    2g 2h                                   
+ * 8    4          2i 2j                                  
+ *[5    1]        [2k 2l]  (do not exist on 14 button controls)
+ * 7    3          2m 2n                                 
+ * 6    2          2o 2p                                
+ *
+ * ------------------------------------------------
+ * | 1 stationary player   |   2 stationary test  |
+ * | 3 stationary audio    |   .                  |
+ * | 4 stationary light    |   .                  |
+ * | 5 stationary 001      |   .                  |
+ * | .                     |   .                  |
+ * | 6 mobile player       |   7 mobile access    |
+ * | 8 mobile door         |   .                  |
+ * ------------------------------------------------
+ *
+ * policy:
+ *  use '^' immediate flag only where needed e.g. for long 
+ *  running commands that would timeout aggressive u-remote
+ *  timing otherwise
+ *
+ */
 raw2cmd_str  
 key_raw2cmd[] = {
 
     { }, 
-    // --- regular p-command (routed via p-menu selection) ---
-    // menu codes sent to server for pre configuration
-    { _w1(C_PFX "L*^" C_PFX_SERVER " ^"), 0 },  // 01 (META)          does not exist on 14 button
-    { _w1(C_PFX "P ^" C_PFX_SERVER " ^"), 0 },  // 02 (META)          
-    { _w1(C_PFX "N ^" C_PFX_SERVER " ^"), 0 },  // 03 (META)          
-    { _w1(C_PFX "J ^" C_PFX_SERVER " ^"), 0 },  // 04 (META)          
 
-    { _w1(C_PFX "K*^" C_PFX_SERVER " ^"), 0 },  // 05 (META)          does not exist on 14 button
-    { _w1(C_PFX "O ^" C_PFX_SERVER " ^"), 0 },  // 06 (META)          
-    { _w1(C_PFX "M ^" C_PFX_SERVER " ^"), 0 },  // 07 (META)          
-    { _w1(C_PFX "I ^" C_PFX_SERVER " ^"), 0 },  // 08 (META)          
+    // do not pre ack to get at the real server response 
+// --- p-command p-menu selection ---   
+    {       ".", 0 }, // 01 l  does not exist on 14 button
+    { M_PFX "P", 0 }, // 02 p                 
+    { M_PFX "N", 0 }, // 03 n                 
+    { M_PFX "J", 0 }, // 04 j                 
 
-    { _w1(C_PFX "H ^" C_PFX_SERVER " ^"), 0 },  // 09 (META)          
-    { _w1(C_PFX "F ^" C_PFX_SERVER " ^"), 0 },  // 10 (META)          
-    { _w1(C_PFX "D ^" C_PFX_SERVER " ^"), 0 },  // 11 (META)          
-    { _w1(C_PFX "B ^" C_PFX_SERVER " ^"), 0 },  // 12 (META)          
+    {       ".", 0 }, // 05 k  does not exist on 14 button
+    { M_PFX "O", 0 }, // 06 o                 
+    { M_PFX "M", 0 }, // 07 m                 
+    { M_PFX "I", 0 }, // 08 i                 
 
-    { _w1(C_PFX "G ^" C_PFX_SERVER " ^"), 0 },  // 13 (META)          
-    { _w1(C_PFX "E ^" C_PFX_SERVER " ^"), 0 },  // 14 (META)          
-    { _w1(C_PFX "C ^" C_PFX_SERVER " ^"), 0 },  // 15 (META)          
-    { _w1(C_PFX "A ^" C_PFX_SERVER " ^"), 0 },  // 16 (META)          
+    { M_PFX "H", 0 }, // 09 h                 
+    { M_PFX "F", 0 }, // 10 f                 
+    { M_PFX "D", 0 }, // 11 d                 
+    { M_PFX "B", 0 }, // 12 b                 
 
-    // cmd codes sent to server pre configured from above codes
-    // no closing commands in use
-    { _w1(C_PFX "l*^" C_PFX_SERVER " ^"), 0 },  // 17                 does not exist on 14 button
-    { _w1(C_PFX "p ^" C_PFX_SERVER " ^"), 0 },  // 18                 KEY_CODE_META
-    { _w1(C_PFX "n ^" C_PFX_SERVER " ^"), 0 },  // 19              
-    { _w1(C_PFX "j ^" C_PFX_SERVER " ^"), 0 },  // 20              
+    { M_PFX "G", 0 }, // 13 g                 
+    { M_PFX "E", 0 }, // 14 e                 
+    { M_PFX "C", 0 }, // 15 c                 
+    { M_PFX "A", 0 }, // 16 a                 
 
-    { _w1(C_PFX "k*^" C_PFX_SERVER " ^"), 0 },  // 21                 does not exist on 14 button
-    { _w1(C_PFX "o ^" C_PFX_SERVER " ^"), 0 },  // 22                 KEY_CODE_MOBL_DOOR_MENU
-    { _w1(C_PFX "m ^" C_PFX_SERVER " ^"), 0 },  // 23                 KEY_CODE_MOBL_PLAY_MENU
-    { _w1(C_PFX "i ^" C_PFX_SERVER " ^"), 0 },  // 24              
+    // deliberately not pre-acked ATM 
+// --- 1 stationary player ---
+    { "."                          , 0                           },  // 01 l*     does not exist on 14 button
+    { "zz"                         , 0                           },  // 02 p      
+    { "zj"                         , 0                           },  // 03 n      
+    { "zr"                         , 0                           },  // 04 j                                               
 
-    { _w1(C_PFX "h ^" C_PFX_SERVER " ^"), 0 },  // 25              
-    { _w1(C_PFX "f ^" C_PFX_SERVER " ^"), 0 },  // 26                                    
-    { _w1(C_PFX "d ^" C_PFX_SERVER " ^"), 0 },  // 27              
-    { _w1(C_PFX "b ^" C_PFX_SERVER " ^"), 0 },  // 28         
+    { "."                          , 0                           },  // 05 k*     does not exist on 14 button
+    { "zv"                         , 0                           },  // 06 o      
+    { "zl"                         , 0                           },  // 07 m      
+    { "zt"                         , 0                           },  // 08 i                                               
 
-    { _w1(C_PFX "g ^" C_PFX_SERVER " ^"), 0 },  // 29              
-    { _w1(C_PFX "e ^" C_PFX_SERVER " ^"), 0 },  // 30                 
-    { _w1(C_PFX "c ^" C_PFX_SERVER " ^"), 0 },  // 31              
-    { _w1(C_PFX "a ^" C_PFX_SERVER " ^"), 0 },  // 32              
+    { "zx"                         , 0                           },  // 09 h                                                
+    { "zn"                         , 0                           },  // 10 f                                                                      
+    { "zm"                         , 0                           },  // 11 d      
+    { "zk"                         , 0                           },  // 12 b      
 
-    // --- direct p-command (routed explicitly per cmd) ---
-    // cmds not covered by the above mechanisms
-    { _w1("."                           ), 0            },  //   l*     does not exist on 14 button
-    { _w1("."                           ), 0            },  //   p      KEY_CODE_META
-    { _w1("."                           ), 0            },  //   n
-    { _w1("."                           ), 0            },  //   j
+    { "zc"                         , 0                           },  // 13 g                                                
+    { "zb"                         , 0                           },  // 14 e                                                   
+    { "zp"                         , 0                           },  // 15 c      
+    { "zh"                         , 0                           },  // 16 a      
 
-    { _w1("."                           ), 0            },  //   k*     does not exist on 14 button
-    { _w1("."                           ), 0            },  //   o      KEY_CODE_MOBL_DOOR_MENU
-    { _w1("dc ^host3.example.com:8899"       ), 0            },  //   m      KEY_CODE_MOBL_PLAY_MENU
-    { _w1("."                           ), 0            },  //   i
+    // deliberately not pre-acked ATM 
+// --- 2 stationary test -----
+    { "."                          , 0                           },  // 01 l*     does not exist on 14 button
+    { "."                          , 0                           },  // 02 p      KEY_CODE_META
+    { "fc"                         , 0                           },  // 03 n      test sleep non pre-acked
+    { "fc ^"                       , 0                           },  // 04 j      test sleep pre-acked
 
-    { _w1("."                           ), 0            },  //   h
-    { _w1("ii"                          ), _w1("ii")    },  //   f
-    { _w1("ii ^host2.example.com:8888"        ), _w1("ii")    },  //   d
-    { _w1("no ^host3.example.com:8899"       ), _w1("od")    },  //   b      NOOP + ldoor open signal deassert
+    { "."                          , 0                           },  // 05 k*     does not exist on 14 button
+    { "."                          , 0                           },  // 06 o      KEY_CODE_MOBL_DOOR_MENU
+    { "dc ^host3.example.com:8899"      , 0                           },  // 07 m      KEY_CODE_MOBL_PLAY_MENU
+    { "."                          , 0                           },  // 08 i
 
-    { _w1("."                           ), 0            },  //   g
-    { _w1("."                           ), 0            },  //   e
-    { _w1("da ^host3.example.com:8899"       ), 0            },  //   c
-    { _w1("oa ^host3.example.com:8899"       ), _w1("od")    },  //   a      ldoor open signal assert + ldoor open signal deassert
+    { "ii"                         , "ii"                   },  // 09 h      test routed implicitly to STD_TARGET non pre-acked
+    { "ii ^"                       , "ii ^"                 },  // 10 f      test routed implicitly to STD_TARGET pre-acked
+    { "ii ^host2.example.com:8888"       , "ii ^host2.example.com:8888" },  // 11 d      test routed explicitly to host2/ ATTENTION p-proc needs workaround in gw
+    { "no ^host3.example.com:8899"      , "od ^host3.example.com:8899"},  // 12 b      test NOOP + ldoor open signal deassert
 
-// mobl_door (as of p-server):
-// 2a 2b       kp km
-// 2c 2d       kh kn
-// 2e 2f       .  .
-// 2g 2h       .  .
-// 2i 2j       .  .
-// [2k-2l]     .  .
-// 2m 2n       kv kx
-// 2o 2p       .  .
+    { "."                          , 0                           },  // 13 g
+    { "."                          , 0                           },  // 14 e
+    { "da ^host3.example.com:8899"      , 0                           },  // 15 c
+    { "oa ^host3.example.com:8899"      , "od ^host3.example.com:8899"},  // 16 a      ldoor open signal assert + ldoor open signal deassert
 
-    // mobl_door cmd codes that can't be handled by generic menu code scheme
-    // e.g. because containing specific closing commands 
-    { _w1("."                           ), 0            },  //   l*     does not exist on 14 button
-    { _w1("."                           ), 0            },  //   p      KEY_CODE_META
-    { _w1("kx"                          ), 0            },  //   n      e multi_s_op_rm                          
-    { _w1("."                           ), 0            },  //   j                                               
+// --- 3 stationary audio ----
+    { "."                          , 0                           },  // 01 l*     does not exist on 14 button
+    { "zp;xx;cc ^"                 , 0                           },  // 02 p      
+    { "."                          , 0                           },  // 03 n      
+    { "."                          , 0                           },  // 04 j                                               
 
-    { _w1("."                           ), 0            },  //   k*     does not exist on 14 button
-    { _w1("."                           ), 0            },  //   o      KEY_CODE_MOBL_DOOR_MENU
-    { _w1("kv"                          ), 0            },  //   m      KEY_CODE_MOBL_PLAY_MENU / e I_D_CLU
-    { _w1("."                           ), 0            },  //   i                                               
+    { "."                          , 0                           },  // 05 k*     does not exist on 14 button
+    { "xc;cz ^"                    , 0                           },  // 06 o      
+    { "."                          , 0                           },  // 07 m      
+    { "cb ^"                       , 0                           },  // 08 i                                               
 
-    { _w1("."                           ), 0            },  //   h                                                
-    { _w1("."                           ), 0            },  //   f                                                                      
-    { _w1("kn"                          ), 0            },  //   d      e multi_s_op_4
-    { _w1("km"                          ), _w1("kc")    },  //   b      e I_D_OPL
+    { "."                          , 0                           },  // 09 h  
+    { "xc ^"                       , 0                           },  // 10 f                                                                      
+    { "xx ^"                       , 0                           },  // 11 d      
+    { "xz ^"                       , 0                           },  // 12 b      
 
-    { _w1("."                           ), 0            },  //   g                                                
-    { _w1("."                           ), 0            },  //   e                                                   
-    { _w1("kh"                          ), 0            },  //   c      e I_D_OPU
-    { _w1("kp"                          ), _w1("kc")    },  //   a      e I_D_OPUL
+    { "cv ^"                       , 0                           },  // 13 g                                                
+    { "fa ^"                       , 0                           },  // 14 e                                                   
+    { "cx ^"                       , 0                           },  // 15 c      
+    { "cz ^"                       , 0                           },  // 16 a      
+
+// --- 4 stationary light ----
+    { "."                          , 0                           },  // 01 l*     does not exist on 14 button
+    { "."                          , 0                           },  // 02 p      
+    { "."                          , 0                           },  // 03 n      
+    { "."                          , 0                           },  // 04 j                                               
+
+    { "."                          , 0                           },  // 05 k*     does not exist on 14 button
+    { "ce ^"                       , 0                           },  // 06 o      
+    { "cw ^"                       , 0                           },  // 07 m      
+    { "."                          , 0                           },  // 08 i                                               
+
+    { "."                          , 0                           },  // 09 h                                                
+    { "."                          , 0                           },  // 10 f                                                                      
+    { "."                          , 0                           },  // 11 d      
+    { "."                          , 0                           },  // 12 b      
+
+    { "."                          , 0                           },  // 13 g                                                
+    { "cy ^"                       , 0                           },  // 14 e                                                   
+    { "cu ^"                       , 0                           },  // 15 c      
+    { "cq ^"                       , 0                           },  // 16 a      
+
+// --- 5 stationary 001 ------
+    { "."                          , 0                           },  // 01 l*     does not exist on 14 button
+    { "."                          , 0                           },  // 02 p      
+    { "."                          , 0                           },  // 03 n      
+    { "."                          , 0                           },  // 04 j                                               
+
+    { "."                          , 0                           },  // 05 k*     does not exist on 14 button
+    { "."                          , 0                           },  // 06 o      
+    { "."                          , 0                           },  // 07 m      
+    { "."                          , 0                           },  // 08 i                                               
+
+    { "."                          , 0                           },  // 09 h                                                
+    { "."                          , 0                           },  // 10 f                                                                      
+    { "."                          , 0                           },  // 11 d      
+    { "gs"                         , 0                           },  // 12 b      
+
+    { "."                          , 0                           },  // 13 g                                                
+    { "."                          , 0                           },  // 14 e                                                   
+    { "ge"                         , 0                           },  // 15 c      
+    { "ga"                         , 0                           },  // 16 a      
+
+    // not pre-acked as mobile server can't act upon it anyway
+// --- 6 mobile player -------
+    { "."                          , 0                           },  // 01 l*     does not exist on 14 button
+    { "."                          , 0                           },  // 02 p      
+    { "zj"                         , 0                           },  // 03 n      
+    { "zr"                         , 0                           },  // 04 j                                               
+
+    { "."                          , 0                           },  // 05 k*     does not exist on 14 button
+    { "zv"                         , 0                           },  // 06 o      
+    { "zl"                         , 0                           },  // 07 m      
+    { "zt"                         , 0                           },  // 08 i                                               
+
+    { "zx"                         , 0                           },  // 09 h                                                
+    { "zn"                         , 0                           },  // 10 f                                                                      
+    { "zm"                         , 0                           },  // 11 d      
+    { "zk"                         , 0                           },  // 12 b      
+
+    { "zc"                         , 0                           },  // 13 g                                                
+    { "zb"                         , 0                           },  // 14 e                                                   
+    { "zp"                         , 0                           },  // 15 c      
+    { "zh"                         , 0                           },  // 16 a      
+
+    // not pre-acked as mobile server can't act upon it anyway
+// --- 7 mobile access -------
+    { "."                          , 0                           },  // 01 l*     does not exist on 14 button
+    { "."                          , 0                           },  // 02 p      
+    { "gc"                         , 0                           },  // 03 n      
+    { "."                          , 0                           },  // 04 j                                               
+
+    { "."                          , 0                           },  // 05 k*     does not exist on 14 button
+    { "."                          , 0                           },  // 06 o      
+    { "gz"                         , 0                           },  // 07 m      
+    { "gn"                         , 0                           },  // 08 i                                               
+
+    { "."                          , 0                           },  // 09 h                                                
+    { "."                          , 0                           },  // 10 f                                                                      
+    { "gd"                         , 0                           },  // 11 d      
+    { "zz"                         , 0                           },  // 12 b      
+
+    { "gb"                         , 0                           },  // 13 g                                                
+    { "gv"                         , 0                           },  // 14 e                                                   
+    { "gx"                         , 0                           },  // 15 c      
+    { "bb"                         , 0                           },  // 16 a      
+
+    // not pre-acked as mobile server can't act upon it anyway
+// --- 8 mobile door ---------
+    { "."                          , 0                           },  // 01 l*     does not exist on 14 button
+    { "."                          , 0                           },  // 02 p      KEY_CODE_META
+    { "kx"                         , 0                           },  // 03 n      e multi_s_op_rm                          
+    { "."                          , 0                           },  // 04 j                                               
+
+    { "."                          , 0                           },  // 05 k*     does not exist on 14 button
+    { "."                          , 0                           },  // 06 o      KEY_CODE_MOBL_DOOR_MENU
+    { "kv"                         , 0                           },  // 07 m      KEY_CODE_MOBL_PLAY_MENU / e I_D_CLU
+    { "."                          , 0                           },  // 08 i                                               
+
+    { "."                          , 0                           },  // 09 h                                                
+    { "."                          , 0                           },  // 10 f                                                                      
+    { "kn"                         , 0                           },  // 11 d      e multi_s_op_4
+    { "km"                         , "kc"                   },  // 12 b      e I_D_OPL
+
+    { "."                          , 0                           },  // 13 g                                                
+    { "."                          , 0                           },  // 14 e                                                   
+    { "kh"                         , 0                           },  // 15 c      e I_D_OPU
+    { "kp"                         , "kc"                   },  // 16 a      e I_D_OPUL
+
 };
 
 raw2menu_str  
@@ -1105,25 +1314,25 @@ key_raw2menu[] = {
 
     { },  
     // menu access methods used for server communication
-    {_AT_ROTA2G_to_RPID,  0 },  // 01 (META)          does not exist on 14 button
-    {_AT_ROTA2G_to_RPID,  0 },  // 02 (META)          
-    { AT_TETHER_to_KARRp, 0 },  // 03 (META)          
-    {_AT_ROTA2G_to_RPID,  0 },  // 04 (META)          
+    {_AT_ROTA2G_to_RPID,  0 },  // 01 l (META)          does not exist on 14 button
+    {_AT_ROTA2G_to_RPID,  0 },  // 02 p (META)          
+    { AT_TETHER_to_KARRp, 7 },  // 03 n (META)          
+    {_AT_ROTA2G_to_RPID,  0 },  // 04 j (META)          
 
-    {_AT_ROTA2G_to_RPID,  0 },  // 05 (META)          does not exist on 14 button
-    { AT_TETHER_to_KARRd, 2 },  // 06 (META)          KEY_CODE_MOBL_DOOR_MENU
-    { AT_TETHER_to_KARRp, 0 },  // 07 (META)          KEY_CODE_MOBL_PLAY_MENU
-    { AT_ESPNOW_to_PROX,  0 },  // 08 (META)          
+    {_AT_ROTA2G_to_RPID,  0 },  // 05 k (META)          does not exist on 14 button
+    { AT_TETHER_to_KARRd, 8 },  // 06 o (META)          KEY_CODE_MOBL_DOOR_MENU
+    { AT_TETHER_to_KARRp, 6 },  // 07 m (META)          KEY_CODE_MOBL_PLAY_MENU
+    { AT_ESPNOW_to_PROX,  0 },  // 08 i (META)          
 
-    {_AT_ROTA2G_to_RPID,  0 },  // 09 (META)          
-    {_AT_ROTA2G_to_RPID,  0 },  // 10 (META)          
-    {_AT_ROTA2G_to_RPID,  0 },  // 11 (META)          
-    { AT_ESPNOW_to_PROX,  1 },  // 12 (META)          // 1: trigger direct p-command mechanism
+    {_AT_ROTA2G_to_RPID,  0 },  // 09 h (META)          
+    {_AT_ROTA2G_to_RPID,  0 },  // 10 f (META)          
+    {_AT_ROTA2G_to_RPID,  0 },  // 11 d (META)          
+    { AT_ESPNOW_to_PROX,  2 },  // 12 b (META)          // 1: trigger direct p-command mechanism
 
-    { AT_ESPNOW_to_PROX,  0 },  // 13 (META)          
-    { AT_ESPNOW_to_PROX,  0 },  // 14 (META)          
-    { AT_ESPNOW_to_PROX,  0 },  // 15 (META)          
-    { AT_ESPNOW_to_PROX,  0 },  // 16 (META)          
+    { AT_ESPNOW_to_PROX,  5 },  // 13 g (META)          
+    { AT_ESPNOW_to_PROX,  4 },  // 14 e (META)          
+    { AT_ESPNOW_to_PROX,  3 },  // 15 c (META)          
+    { AT_ESPNOW_to_PROX,  1 },  // 16 a (META)          
 };
 
 #endif  // ENTITY_15_CLASS
@@ -1855,6 +2064,13 @@ TP05
     // indicate keypress without delay to reflect hardware wear
     beep_enque(BEEP_SPIKE_PULSE_WIDTH, BEEP_SPIKE, BEEP_VOLUME_SPIKE);
     beep_enque(BEEP_PURGE_PULSE, 0, 0);
+/*
+ * the zero point the ear measures from. the chirp is BEEP_SPIKE_PULSE_WIDTH == 30ms of audio and
+ * dispatch_beeps blocks on an empty queue afterwards, so the status tone sounds continuous with it
+ * only if mysend()'s beep(BEEP_OK, 1) is enqueued within those 30ms. PR01 because these entities
+ * build with DEBUG 1 - anything higher compiles to nothing on the very serial line we measure from
+ */
+PR01("chirp: %lu\n", tstamp());
     _dynamic_access_target = dynamic_access_target; // init the dynamic version with current, may be overwritten shortly
 
 // -----------------------------------------------------
@@ -1949,10 +2165,10 @@ TP05
         //
         } else if (dynamic_access_target == AT_TETHER_to_KARRp) {  // use current dynamic_access_target (w/o _)
             // emulate KEY_CODE_MOBL_DOOR_MENU
-            key = switch_dynamic_access_target(KEY_CODE_MOBL_DOOR_MENU);   // emulate _w1(C_PFX "o ^" C_PFX_SERVER " ^")
+            key = switch_dynamic_access_target(KEY_CODE_MOBL_DOOR_MENU);   // emulate M_PFX "o"
         } else if (dynamic_access_target == AT_TETHER_to_KARRd) {   // use current dynamic_access_target (w/o _)
             // emulate KEY_CODE_MOBL_PLAY_MENU
-            key = switch_dynamic_access_target(KEY_CODE_MOBL_PLAY_MENU);   // emulate _w1(C_PFX "m ^" C_PFX_SERVER " ^")
+            key = switch_dynamic_access_target(KEY_CODE_MOBL_PLAY_MENU);   // emulate M_PFX "m"
         } else {
             /*
              * restore KEY_CODE_META since it may have been overwritten
@@ -1979,7 +2195,7 @@ TP05
     {
 #if defined(SUPPORT_MENU_SWITCHING) 
 out1:
-        key += (CMD_KEY_OFFSET_BASE + dynamic_cmd_offset) * CMD_KEY_OFFSET_MULTIPLIER;
+        key += dynamic_cmd_offset * CMD_KEY_OFFSET_MULTIPLIER;
 #else
         // nothing to do
 #endif
@@ -2009,6 +2225,17 @@ if (*key_raw2cmd[key].cmd != '.') {
      * even though p-menu selection cmd [2B] is NOT required for [2b] (np ^host3.example.com:8899) it is regularly sent to the server
      * reason: we want a regular accoustic feedback (cmd success/fail) when selecting direct p-command menues
      */
+
+#if defined(VBAT_ADC1_SENSE_PIN)
+    /*
+     * UGLY HACK as of 2026_10_01: 
+     * artificially trigger a voltage report and suppress the original cmd
+     * TO BE FIXED!!!
+     */
+    if (!strcmp(key_raw2cmd[key].cmd, "gd")) {
+        vbat_trigger = 10000;
+    } else
+#endif // if defined(VBAT_ADC1_SENSE_PIN)
     if (!mysend(key_raw2cmd[key].cmd, at_ptr->host, at_ptr->port, 0)) {
 #if defined(SUPPORT_MENU_SWITCHING)
         if (IS_MENU_KEY(key)) {
@@ -2040,15 +2267,9 @@ TPROF("main_send_done");
      * AKA send a key release cmd even if the press is reported to fail, for your safety
      */
     if (key_raw2cmd[key].cmdClosing) {
-        _i8 cmd[64];
-
-        /*
-         * effectively exchange the original command itself and leave the rest untouched
-         */
-        snprintf(cmd, _SZ(cmd), "%s%s", key_raw2cmd[key].cmdClosing, key_raw2cmd[key].cmd + 2);
         wait_for_key_release();
-        if (mysend(cmd, at_ptr->host, at_ptr->port, 0)) {
-            PR00("could not send CLOSING [%s] to [[%s]:%d]\n", cmd, at_ptr->host, at_ptr->port);
+        if (mysend(key_raw2cmd[key].cmdClosing, at_ptr->host, at_ptr->port, 0)) {
+            PR00("could not send CLOSING [%s] to [[%s]:%d]\n", key_raw2cmd[key].cmdClosing, at_ptr->host, at_ptr->port);
         }
     }
 TPROF("closing_done");
@@ -2301,13 +2522,25 @@ TPROF("scan_keys");
     PR02("key: 0x%02x\n", key);
     init_2nd();
 TPROF("init_2nd");
-#if defined(VBAT_PATROL_INTERVAL)
+#if defined(VBAT_PATROL_INTERVAL) && !defined(DEBUG_TIMER_WAKEUP)
     /*
      * our own patrol timer fired, AKA nobody pressed anything. skip the whole key/menu machinery -
      * process_input(0) would issue its introducing spike beep, and that alone costs ~410ms of
      * beep_sync() in resort_to_deep_sleep() on the way back down, every single interval
      *
      * init_2nd() has to have run first: vbat_monitor_init() lives in there
+     */
+    /*
+     * !defined(DEBUG_TIMER_WAKEUP) added 2026_09_15 to MATCH the arming site in
+     * prepare_keys_for_deep_sleep(), which has always carried it. the two guards disagreeing was a
+     * silent trap: the patrol timer was correctly never armed, but THIS test still caught every
+     * timer wakeup - and DEBUG_TIMER_WAKEUP's wakeups are timer wakeups too. so with both defined
+     * the patrol swallowed every simulated key press, "goto out" ran before process_input() ever
+     * did, and the trace showed nothing but a 20ms patrol cycle once a second.
+     *
+     * the note at VBAT_PATROL_INTERVAL says "put DEBUG_TIMER_WAKEUP back and the patrol silently
+     * disappears". it was the exact inverse - the patrol silently took over - which is worse,
+     * because a profiling run then measures the patrol path and looks merely uneventful
      */
     if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
         vbat_patrol();
