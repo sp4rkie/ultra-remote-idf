@@ -8,6 +8,8 @@ preferring arduino-esp32? have a look at this: [fast ESP32 Wi-Fi remote control 
 ![alt text](images/shot0010.png "Title")
 ![alt text](images/shot0015.png "Title")
 ![alt text](images/shot0004.png "Title")
+![alt text](images/IMG_20260905_185058_2.jpg "ESP32-S3 Super Mini remote, battery side")
+![alt text](images/IMG_20260905_185603_1.jpg "ESP32-S3 Super Mini remote, key side")
 
 what is it
 ----------
