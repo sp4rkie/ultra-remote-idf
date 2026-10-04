@@ -3437,7 +3437,11 @@ u32_t ipaddr_addr(const char *cp) {     @param cp IP address in ascii representa
 
 IP address native 32bit data:
 
-PR05("ip.ip: %lx\n", event->ip_info.ip.addr);   // ip.ip 192.168.0.25 == ip.ip 0x0449a8c0
+PR05("ip.ip: %lx\n", event->ip_info.ip.addr);   // ip.ip 192.0.2.12 == ip.ip 0x0c0200c0
+                                                // 192.0.2.0/24 is the documentation range on purpose: a real
+                                                // address would leak into the exports through the packed form,
+                                                // which exportit cannot see, and a 192.168.x one would join
+                                                // its placeholder list and renumber every other address
 */
 
 RTC_DATA_ATTR _i8 cached_ip[16];        // assigned per IPSTR == 16 chars
