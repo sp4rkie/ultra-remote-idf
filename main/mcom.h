@@ -2071,6 +2071,11 @@ _http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
+#define OTA_WIFI_WAIT_TIMEOUT 6000      // x 1ms, GENERAL_RETRY_TIMEOUT of the arduino half's wait4wifi()
+#if !defined(MCOM_ARD) && (defined(WIFI_INITIATOR) || defined(WIFI_TARGET)) && !defined(ETH_OPMODE) && !defined(FW_UPGRADE_VIA_ETH)
+#define OTA_WAITS_FOR_IP                // idf, WiFi, and OTA not over ETH -> see ur_wait4ip() in myota()
+#endif
+
 _i32
 myota()
 {
@@ -2083,6 +2088,19 @@ TP05
 #if defined(MCOM_ARD)
     extern _i32 wait4wifi();
     if (wait4wifi()) {  
+        PR00("ERROR: could not OTA (no wifi)\n");
+        stat = 1;
+        goto out;
+    }
+#elif defined(OTA_WAITS_FOR_IP)
+    /*
+     * the idf counterpart of wait4wifi() above. after a ur_connect(.., !WIFI_CONN_WAIT, ..) only
+     * mysend() waits for the IP, and myota() is not always reached through one: ultra_clock
+     * entity 28 runs it straight from a key hold. without this it races DHCP and loses to the
+     * http client's timeout. bounded, like the arduino side
+     */
+    extern _i32 ur_wait4ip(_u32);
+    if (ur_wait4ip(OTA_WIFI_WAIT_TIMEOUT)) {
         PR00("ERROR: could not OTA (no wifi)\n");
         stat = 1;
         goto out;
@@ -2135,7 +2153,7 @@ WTPROF("w_ota_start");  // second connection: handshake again, then the image tr
             stat = 1;
         }
     }
-#if defined(MCOM_ARD)
+#if defined(MCOM_ARD) || defined(OTA_WAITS_FOR_IP)
 out:
 #endif
     if (stat) {
@@ -4134,6 +4152,29 @@ TP05
     ur_wifi_shutdown();
     ESP_ERROR_CHECK(esp_unregister_shutdown_handler(&ur_wifi_shutdown));
     return ESP_OK;
+}
+
+/*
+ * bounded wait for the first IP of a ur_connect(), for callers that need the link but are not
+ * mysend(). polls gw_ip rather than taking s_semph_get_ip_addrs, so the semaphore stays
+ * mysend()'s alone and the two never have to agree on who consumed the give. gw_ip is set by the
+ * first IP and stays set until ur_disconnect(); "0" means the retries ran out
+ */
+_i32
+ur_wait4ip(_u32 timeout)
+{
+TP05
+    _u32 start = tstamp();
+
+    while (!*gw_ip && tstamp() - start < timeout) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (!*gw_ip || !strcmp(gw_ip, "0")) {
+        PR00("no WiFi IP after %lums\n", tstamp() - start);
+        return 1;
+    }
+    PR02("WiFi IP up after %lums\n", tstamp() - start);
+    return 0;
 }
 #endif  // defined(WIFI_INITIATOR) || defined(WIFI_TARGET)
 /* ---^^^--- WiFi section (idf runtime) ---^^^----------------------------------------------------------------- */
