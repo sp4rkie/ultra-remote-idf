@@ -3482,6 +3482,14 @@ RTC_DATA_ATTR _u8 cached_bssid[6] = {0};
 #define WIFI_SCAN_METHOD WIFI_FAST_SCAN
 #define WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK    // minimum mode supported
 #define WIFI_CONNECT_AP_SORT_METHOD WIFI_CONNECT_AP_BY_SIGNAL
+/*
+ * beacon intervals between wakeups, honoured under WIFI_PS_MAX_MODEM only (ultra_remote's WiFi
+ * path); WIFI_PS_MIN_MODEM wakes per DTIM and WIFI_PS_NONE never sleeps. 3 is idf's documented
+ * default for the 0 this used to be left at, so stating it changes nothing: ~307ms at 102.4ms
+ * beacons, longer than the home AP's DTIM (2 by the pings, which top out at ~230ms), so
+ * broadcasts may be missed in between
+ */
+#define WIFI_LISTEN_INTERVAL 3
 
 #define NETIF_DESC_STA "ur"
 
@@ -4038,6 +4046,7 @@ TP05
             .sort_method = WIFI_CONNECT_AP_SORT_METHOD,
             .threshold.rssi = WIFI_SCAN_RSSI_THRESHOLD,
             .threshold.authmode = WIFI_SCAN_AUTH_MODE_THRESHOLD,
+            .listen_interval = WIFI_LISTEN_INTERVAL,
 #if defined(CACHE_CHANNEL)
             .bssid_set = !!cached_channel,
 #endif
